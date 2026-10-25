@@ -26,6 +26,8 @@
   "include": [
     "src",
     "tests",
+    "scripts",
+    ".railway",
     "vite.config.ts",
     "playwright.config.ts"
   ]

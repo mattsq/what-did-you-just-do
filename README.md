@@ -80,23 +80,43 @@ Dependencies are pinned by the committed `package-lock.json`; use `npm ci` for a
 
 ## Hosting
 
-Target one **Railway service** with GitHub deployment, built as a Node application:
+The repository is prepared for one **Railway service** deployed from GitHub; no deployment exists yet. The service is described with Railway's Infrastructure as Code in [`.railway/railway.ts`](.railway/railway.ts) (Railway is retiring `railway.json`/`railway.toml` Config as Code, so there is none):
 
-- **Build command:** `npm run build` (install dependencies as part of the service's build process).
-- **Start command:** `npm start`.
-- **Health check path:** `/health`.
-- **Replicas:** 1 (rooms are in process memory; a second replica would not see the first one's rooms).
-- **Port:** use the Railway-provided `PORT`; do not hardcode a published port.
+- **Source:** this repository's `main` branch.
+- **Build command:** `npm run build`. Railpack installs dependencies first. `RAILPACK_NODE_VERSION=24` pins the Node version CI uses, because Railpack reads `engines.node` before `.nvmrc`.
+- **Start command:** `node dist/server/index.js`, which is what `npm start` runs, without npm and a shell in between: they do not pass Railway's SIGTERM on, and the server uses it to close its sockets before a redeploy replaces it.
+- **Health check:** `/health`, with a 60-second timeout.
+- **Replicas:** 1. Rooms are in process memory; a second replica would not see the first one's rooms.
+- **Port:** the server binds to the `PORT` Railway provides, on all interfaces. The client and Socket.IO share that origin, so there is no CORS setup.
+
+`tests/railway.test.ts` fails if the file stops describing exactly this.
+
+### Deploying (needs a Railway account)
+
+1. Install the Railway CLI (version 5.42.1 or newer; the `railway` npm dev dependency only supplies the definition types), then `railway login`.
+2. Create or pick an empty project and link it: `railway link`. Connect GitHub to Railway so it can read this repository.
+3. Preview, then apply: `railway config plan`, then `railway config apply`. Check the plan: on a project that already has other resources, apply can remove anything the file does not declare.
+4. In the service's **Networking** settings, generate a public Railway domain. Generated domains are not part of `.railway/railway.ts`.
+5. After the first deployment, check the build log shows Node 24 and that the health check passed.
+6. From your own machine, run the smoke test against the public address:
+
+   ```sh
+   npm run smoke -- https://<service>.up.railway.app
+   ```
+
+   It checks `/health`, that the page and sockets share the origin and that the inspector is not served, then plays the protocol with socket clients: create and join, a remote effect each way, a reconnect that keeps role B, a refused third player, the finale for both players and reset. It also checks that neither player receives the other side's control or fixture names. It creates one room, which expires after 30 minutes of inactivity.
+7. For the human check, open the address in two different browsers or devices, create a room, join with the invite link, use each control, refresh one page to confirm it returns to the same clearing, and play to the finale.
+8. Write the public URL in this README.
+
+`E2E_BASE_URL=https://<address> npm run test:e2e` also runs the browser boot test (Phaser renders, the socket connects) against a deployment; the other browser tests need the development server's panels. CI runs both the smoke test and this boot test against `npm start` for every pull request and every push to `main`.
 
 Operating limits of the room server:
 
-- Rooms exist only in memory: a restart or redeploy ends every open room, and players see "That room no longer exists" and can create a new one.
+- Rooms exist only in memory: a restart or redeploy ends every open room, and players see "That room no longer exists" and can create a new one. Avoid pushing to `main` while people are playing.
 - A disconnected player's seat is held for 10 minutes for their reconnect token; after that a new person may take it. A room with nobody connected is deleted after 30 minutes without activity. At most 1000 rooms exist at once.
 - Each connection may send about 10 messages per second (bursts of 30) and create a room about every 20 seconds (bursts of 3).
 - Avatar movement is simulated in the browser. The server checks that each action names a real control owned by the sender's role, but not that the avatar is standing next to it: proximity is a gameplay affordance, not a security boundary.
 - The server logs nothing about rooms, players or tokens.
-
-Configure these in Railway service settings or its supported Infrastructure as Code workflow when connected. Do not create a `railway.json` for a new service: Railway has deprecated that mechanism for new projects. No deployment is provisioned by the repository itself.
 
 ## Implementation milestones
 

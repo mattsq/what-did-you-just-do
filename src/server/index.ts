@@ -14,7 +14,19 @@ if (inspector && process.env.NODE_ENV === "production") {
 }
 
 // Rooms live in this process's memory: run exactly one instance.
-const { httpServer } = createGameServer({ inspector });
-httpServer.listen(port, "0.0.0.0", () => {
+const server = createGameServer({ inspector });
+server.httpServer.listen(port, "0.0.0.0", () => {
   console.info("Game server listening", { port, inspector });
 });
+
+// A host stops the old instance with SIGTERM on every redeploy. Close the
+// sockets so browsers notice at once and start reconnecting, then exit. Open
+// rooms end with this process.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    console.info("Game server stopping", { signal });
+    const forced = setTimeout(() => process.exit(0), 5_000);
+    forced.unref();
+    void server.close().then(() => process.exit(0));
+  });
+}
