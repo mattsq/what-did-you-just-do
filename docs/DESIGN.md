@@ -113,7 +113,7 @@ A compelling single-room experiment is preferable to a framework with no interes
 ### Proposed stack
 
 - **Language:** TypeScript end to end, strict mode.
-- **Client:** Phaser 3, Vite, 2D orthographic/top-down scenes. Use primitive geometry/assets initially.
+- **Client:** Phaser 3, Vite, 2D orthographic/top-down scenes. Use primitive geometry/assets initially. The game uses Phaser's Canvas renderer: the scenes are plain shapes, and Canvas stays smooth on machines where WebGL falls back to software rendering.
 - **Server:** One Node.js HTTP service that serves the production client and hosts Socket.IO rooms.
 - **Shared logic:** Pure TypeScript state machine and protocol types; no Phaser or Socket.IO imports in game rules.
 - **Testing:** Vitest for rules/protocol, Playwright for two distinct browser contexts, TypeScript compiler for type checks.
@@ -194,6 +194,17 @@ room:error { code, message }
 ~~~
 
 These are illustrative message shapes, not a frozen public API. Prefer discriminated unions with runtime validation at the network boundary (Zod or a small explicit parser; add a dependency only if it pays for itself). Keep controls bounded to enums/ranges; reject malformed, wrong-role or impossible operations. Suppress duplicate request IDs and ensure repeat/replay messages do not accidentally double-fire effects.
+
+**As implemented (Milestone 2).** The shapes live in `src/shared/protocol.ts`; every Socket.IO event name equals the message `type`, and the server parses each incoming payload with `parseClientMessage` before acting on it. Refinements of the sketch above:
+
+- `control:act { requestId, action }` carries the same typed `Action` union the rules use (`turn` with a direction of ±1, `toggle`, `press`). A seat remembers its last 100 request IDs and ignores repeats.
+- `world:update { observation, effects }` replaces separate observation and effect messages, so an effect always arrives with the snapshot it belongs to. A player receives an update only when their own projection changed or they witness an effect, so revision numbers never reveal unseen activity in the other clearing. Joining or reconnecting sends a snapshot with no effects, so a pulse or the finale is never replayed.
+- `room:status { partner: "absent" | "connected" | "disconnected" }` is the only thing a player learns about the other seat.
+- `room:error { code }` uses codes rather than messages; the client chooses the wording. A reconnect token presented from a new tab takes the seat over and the older tab is told `replaced`.
+- Either player can send `room:reset`; both receive the restored state with a higher revision.
+- The client keeps the reconnect token in `sessionStorage`, so a refresh reclaims the role while a second tab is a separate person.
+
+The room logic (`src/server/rooms.ts`) is transport-free: each call returns the messages to deliver to which connection, so membership, expiry and privacy are unit-tested without sockets.
 
 **Room lifecycle:** Generate cryptographically unpredictable short room codes. One A slot and one B slot. A valid reconnect token can reclaim a role on refresh. Unclaimed/disconnected slots expire after a reasonable period. A room expires entirely after inactivity. No account or persistent storage in v1. A server restart may reset open rooms; state this in the UI if it matters. Rate-limit room creation and interactions at a basic level to prevent accidental or trivial abuse of the public service.
 

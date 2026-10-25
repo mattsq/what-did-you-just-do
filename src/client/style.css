@@ -23,3 +23,11 @@ p { margin: 7px 0; font-size: 0.9rem; }
   margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
   font-size: 0.75rem; background: #e3e8db; border-radius: 6px;
 }
+#lobby button, .invite button {
+  font: inherit; font-size: 0.9rem; padding: 6px 12px; cursor: pointer;
+  border: 1px solid #2f4a36; border-radius: 6px; background: #2f4a36; color: #fff;
+}
+.invite { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.9rem; }
+.invite input { flex: 1 1 18em; min-width: 0; font: inherit; padding: 5px 8px; border: 1px solid #6b7a63; border-radius: 6px; }
+#preview-controls { margin: 0; }
+[hidden] { display: none !important; }

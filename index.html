@@ -10,11 +10,25 @@
     <main>
       <header>
         <h1>What Did You Just Do?</h1>
-        <p>A cooperative puzzle experiment. Single-browser preview: two-player rooms are not implemented yet.</p>
-        <div class="toolbar" role="group" aria-label="Preview controls">
-          <button type="button" data-role="A" aria-pressed="true">Western clearing (A)</button>
-          <button type="button" data-role="B" aria-pressed="false">Eastern clearing (B)</button>
-          <button type="button" id="reset">Reset</button>
+        <p>A cooperative puzzle for two people. Start a voice call with a friend first: you will need to talk.</p>
+        <section id="lobby" hidden>
+          <button type="button" id="create-room">Create a room</button>
+          <p>You will get a link to send to your partner. Each of you arrives in a different clearing.</p>
+        </section>
+        <section id="room-panel" hidden>
+          <p id="role-label"></p>
+          <div class="invite">
+            <label for="invite-link">Invite link</label>
+            <input id="invite-link" type="text" readonly />
+            <button type="button" id="copy-link">Copy</button>
+          </div>
+        </section>
+        <div class="toolbar" role="group" aria-label="Game controls">
+          <span id="preview-controls" class="toolbar" hidden>
+            <button type="button" data-role="A" aria-pressed="true">Western clearing (A)</button>
+            <button type="button" data-role="B" aria-pressed="false">Eastern clearing (B)</button>
+          </span>
+          <button type="button" id="reset" hidden>Reset</button>
           <button type="button" id="mute" aria-pressed="false">Sound on</button>
         </div>
         <p id="connection-state" role="status" aria-live="polite">Connecting to server…</p>
