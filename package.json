@@ -10,13 +10,14 @@
   "scripts": {
     "dev": "concurrently -k -n client,server \"npm:dev:client\" \"npm:dev:server\"",
     "dev:client": "vite --host 0.0.0.0",
-    "dev:server": "tsx watch src/server/index.ts",
-    "build": "vite build && esbuild src/server/index.ts --bundle --packages=external --platform=node --format=esm --target=node22 --outfile=dist/server/index.js",
+    "dev:server": "tsx watch src/server/index.ts --inspector",
+    "build": "vite build && esbuild src/server/index.ts --bundle --packages=external --platform=node --format=esm --target=node22 --define:process.env.NODE_ENV=\\\"production\\\" --outfile=dist/server/index.js",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "smoke": "tsx scripts/smoke.ts",
     "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -31,6 +32,7 @@
     "@types/node": "^24.19.2",
     "concurrently": "^10.0.6",
     "esbuild": "^0.28.2",
+    "railway": "3.15.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",

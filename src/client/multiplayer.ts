@@ -35,6 +35,12 @@ export function startMultiplayer(stage: Stage): void {
   const inviteLink = element<HTMLInputElement>("invite-link");
   const resetButton = element<HTMLButtonElement>("reset");
   const devPanel = import.meta.env.DEV ? element("dev-panel") : null;
+  // Development only, and only on request: complete room state from the
+  // server's inspector. The production bundle leaves this module out.
+  const inspecting = import.meta.env.DEV && new URLSearchParams(location.search).has("inspect");
+  const inspector = inspecting ? import("./inspector").then((module) => module.startInspector()) : null;
+  /** Keeps `inspect` in the address bar so a reload still inspects; never in the invite link. */
+  const pageQuery = (query: string) => (inspecting ? `${query ? `${query}&` : "?"}inspect` : query) || location.pathname;
 
   const say = (text: string) => {
     if (status) status.textContent = text;
@@ -57,7 +63,7 @@ export function startMultiplayer(stage: Stage): void {
     room = null;
     latest = null;
     stage.hide();
-    if (!keepRoomUrl) history.replaceState(null, "", location.pathname);
+    if (!keepRoomUrl) history.replaceState(null, "", pageQuery(""));
     if (lobby) lobby.hidden = false;
     if (roomPanel) roomPanel.hidden = true;
     if (resetButton) resetButton.hidden = true;
@@ -73,7 +79,8 @@ export function startMultiplayer(stage: Stage): void {
     onReady: (code, role) => {
       room = { code, role };
       const link = `${location.origin}${location.pathname}?room=${code}`;
-      history.replaceState(null, "", `?room=${code}`);
+      history.replaceState(null, "", pageQuery(`?room=${code}`));
+      void inspector?.then((panel) => panel.watch(code));
       if (lobby) lobby.hidden = true;
       if (roomPanel) roomPanel.hidden = false;
       if (resetButton) resetButton.hidden = false;

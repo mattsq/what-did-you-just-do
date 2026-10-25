@@ -105,3 +105,62 @@ describe("socket server", () => {
     expect(await response.json()).toEqual({ status: "ok" });
   });
 });
+
+describe("development inspector", () => {
+  it("does not exist unless the server enables it", async () => {
+    const inspector = connect(`${url}/inspect`, { transports: ["websocket"], forceNew: true });
+    sockets.push(inspector);
+    const failure = await new Promise<Error>((resolve) => inspector.on("connect_error", resolve));
+    expect(failure.message).toMatch(/Invalid namespace/);
+  });
+
+  it("when enabled, shows a room's state and acts as either role", async () => {
+    await server.close();
+    server = createGameServer({ clientDir: "/nonexistent", inspector: true });
+    await new Promise<void>((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(server.httpServer.address() as AddressInfo).port}`;
+
+    const a = client();
+    const readyA = a.next("room:ready");
+    a.socket.emit("room:create");
+    const { roomCode } = await readyA;
+
+    const inspector = connect(`${url}/inspect`, { transports: ["websocket"], forceNew: true });
+    sockets.push(inspector);
+    type Snapshot = { roomCode: string; room: { state: { controls: Record<string, unknown> }; trace: unknown[] } | null };
+    const snapshot = (predicate: (s: Snapshot) => boolean) =>
+      new Promise<Snapshot>((resolve) => {
+        const check = (s: Snapshot) => predicate(s) && (inspector.off("inspect:room", check), resolve(s));
+        inspector.on("inspect:room", check);
+      });
+
+    const watching = snapshot(() => true);
+    inspector.emit("inspect:watch", { roomCode });
+    expect((await watching).room?.state.controls).toMatchObject({ wheel: 0, valve: 0 });
+
+    // A player's own action refreshes the inspector too.
+    const afterPlayer = snapshot((s) => s.room?.state.controls.wheel === 1);
+    a.socket.emit("control:act", { requestId: "r1", action: { type: "turn", controlId: "wheel", direction: 1 } });
+    await afterPlayer;
+
+    const poolChanged = a.next("world:update", (m) => m.observation.fixtures.pool?.pattern === 2);
+    inspector.emit("inspect:act", { roomCode, role: "B", action: { type: "turn", controlId: "valve", direction: 1 } });
+    await poolChanged;
+
+    const refused = new Promise((resolve) => inspector.once("inspect:error", resolve));
+    inspector.emit("inspect:replay", { roomCode, trace: [{ at: 0, kind: "explode" }] });
+    await refused;
+
+    // A full-length trace fits in one message (1000 entries is about 100 kB).
+    const longTrace = Array.from({ length: 1000 }, (_, i) => ({
+      at: 100_000 + i * 1000,
+      kind: "act",
+      role: "A",
+      action: { type: "turn", controlId: "wheel", direction: 1 },
+    }));
+    const replayed = snapshot((s) => s.room?.trace.length === 1000);
+    inspector.emit("inspect:replay", { roomCode, trace: longTrace });
+    // 1000 turns of a three-position wheel end one detent on from the start.
+    expect((await replayed).room?.state.controls.wheel).toBe(1);
+  });
+});

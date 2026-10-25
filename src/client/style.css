@@ -23,6 +23,12 @@ p { margin: 7px 0; font-size: 0.9rem; }
   margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
   font-size: 0.75rem; background: #e3e8db; border-radius: 6px;
 }
+#inspector { margin: 8px 0; padding: 8px; font-size: 0.8rem; background: #e3e8db; border-radius: 6px; }
+#inspector h2 { margin: 0 0 4px; font-size: 1rem; }
+#inspector .toolbar button { font-size: 0.75rem; padding: 3px 7px; }
+.inspector-views { display: grid; grid-template-columns: repeat(auto-fit, minmax(14em, 1fr)); gap: 6px; }
+.inspector-views pre { margin: 0; padding: 6px; overflow-x: auto; font-size: 0.7rem; background: #f6f8f2; border-radius: 4px; }
+#inspector textarea { display: block; width: 100%; font: 0.7rem ui-monospace, monospace; }
 #lobby button, .invite button {
   font: inherit; font-size: 0.9rem; padding: 6px 12px; cursor: pointer;
   border: 1px solid #2f4a36; border-radius: 6px; background: #2f4a36; color: #fff;

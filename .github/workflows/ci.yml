@@ -21,3 +21,11 @@ jobs:
       - run: npm run check
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      # The production build as Railway would run it: the remote smoke test,
+      # then the browser boot test against `npm start` rather than the dev server.
+      - name: Smoke test the production server
+        run: |
+          PORT=3100 npm start &
+          for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1:3100/health && break; sleep 1; done
+          npm run smoke -- http://127.0.0.1:3100
+          E2E_BASE_URL=http://127.0.0.1:3100 npm run test:e2e

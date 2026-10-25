@@ -89,6 +89,18 @@ export function applyAction(
   };
 }
 
+/**
+ * Development inspection only: completes the finale regardless of the
+ * conditions. A no-op once the finale is complete, like the real trigger.
+ */
+export function forceFinale(state: GameState): { readonly state: GameState; readonly effects: readonly Effect[] } {
+  if (state.finaleComplete) return { state, effects: [] };
+  return {
+    state: { ...state, revision: state.revision + 1, finaleComplete: true, nextEventId: state.nextEventId + 1 },
+    effects: [{ eventId: state.nextEventId, kind: "finale" }],
+  };
+}
+
 export function finaleConditionsHold(state: GameState, puzzle: PuzzleDefinition = FIRST_CLEARING): boolean {
   return puzzle.finale.requires.every(
     (condition) => fixtureValue(state, puzzle, condition.fixture, condition.property) === condition.equals,

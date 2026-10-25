@@ -4,12 +4,18 @@ import { join } from "node:path";
 import express from "express";
 import { Server } from "socket.io";
 import { parseClientMessage, type ClientMessage } from "../shared/protocol";
+import { attachInspector } from "./inspector";
 import { RoomManager, type Delivery, type RoomManagerOptions } from "./rooms";
 
 export interface GameServerOptions extends RoomManagerOptions {
   /** Directory of the built client; served when it contains index.html. */
   readonly clientDir?: string;
   readonly sweepIntervalMs?: number;
+  /**
+   * Development only: serve the unauthenticated inspector namespace, which
+   * reveals complete room state. Never enable it for a public server.
+   */
+  readonly inspector?: boolean;
 }
 
 export interface GameServer {
@@ -18,6 +24,8 @@ export interface GameServer {
   close(): Promise<void>;
 }
 
+const PLAYER_MESSAGE_BYTES = 4096;
+const INSPECTOR_MESSAGE_BYTES = 256 * 1024;
 /** Messages per connection: a burst allowance refilled at a steady rate. */
 const MESSAGE_BURST = 30;
 const MESSAGES_PER_SECOND = 10;
@@ -50,7 +58,12 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
   const rooms = new RoomManager(options);
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer, { maxHttpBufferSize: 4096, serveClient: false });
+  // Player messages are tiny. Only the development inspector sends more: a
+  // full-length trace for replay is about 100 kB.
+  const io = new Server(httpServer, {
+    maxHttpBufferSize: options.inspector ? INSPECTOR_MESSAGE_BYTES : PLAYER_MESSAGE_BYTES,
+    serveClient: false,
+  });
 
   const deliver = (deliveries: readonly Delivery[]) => {
     for (const { connectionId, message } of deliveries) io.to(connectionId).emit(message.type, message);
@@ -69,6 +82,17 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
     }
   };
 
+  const refreshInspectors = options.inspector ? attachInspector(io, rooms, deliver) : null;
+  /** Runs a room operation for a player, then refreshes inspectors of the rooms it touched. */
+  const forPlayer = (connectionId: string, operation: () => Delivery[]) => {
+    const before = rooms.roomOf(connectionId);
+    deliver(operation());
+    if (!refreshInspectors) return;
+    const after = rooms.roomOf(connectionId);
+    if (before) refreshInspectors(before);
+    if (after && after !== before) refreshInspectors(after);
+  };
+
   io.on("connection", (socket) => {
     const messages = new TokenBucket(MESSAGE_BURST, MESSAGES_PER_SECOND, now);
     const creations = new TokenBucket(CREATE_BURST, CREATES_PER_SECOND, now);
@@ -80,9 +104,9 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
       const message = parseClientMessage(event, payload);
       if (!message) return reply("invalid-message");
       if (message.type === "room:create" && !creations.take()) return reply("rate-limited");
-      deliver(handle(socket.id, message));
+      forPlayer(socket.id, () => handle(socket.id, message));
     });
-    socket.on("disconnect", () => deliver(rooms.leave(socket.id)));
+    socket.on("disconnect", () => forPlayer(socket.id, () => rooms.leave(socket.id)));
   });
 
   const sweep = setInterval(() => deliver(rooms.sweep()), options.sweepIntervalMs ?? 60_000);
