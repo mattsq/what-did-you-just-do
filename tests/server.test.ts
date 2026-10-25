@@ -150,5 +150,17 @@ describe("development inspector", () => {
     const refused = new Promise((resolve) => inspector.once("inspect:error", resolve));
     inspector.emit("inspect:replay", { roomCode, trace: [{ at: 0, kind: "explode" }] });
     await refused;
+
+    // A full-length trace fits in one message (1000 entries is about 100 kB).
+    const longTrace = Array.from({ length: 1000 }, (_, i) => ({
+      at: 100_000 + i * 1000,
+      kind: "act",
+      role: "A",
+      action: { type: "turn", controlId: "wheel", direction: 1 },
+    }));
+    const replayed = snapshot((s) => s.room?.trace.length === 1000);
+    inspector.emit("inspect:replay", { roomCode, trace: longTrace });
+    // 1000 turns of a three-position wheel end one detent on from the start.
+    expect((await replayed).room?.state.controls.wheel).toBe(1);
   });
 });

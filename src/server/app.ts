@@ -24,6 +24,8 @@ export interface GameServer {
   close(): Promise<void>;
 }
 
+const PLAYER_MESSAGE_BYTES = 4096;
+const INSPECTOR_MESSAGE_BYTES = 256 * 1024;
 /** Messages per connection: a burst allowance refilled at a steady rate. */
 const MESSAGE_BURST = 30;
 const MESSAGES_PER_SECOND = 10;
@@ -56,7 +58,12 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
   const rooms = new RoomManager(options);
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer, { maxHttpBufferSize: 4096, serveClient: false });
+  // Player messages are tiny. Only the development inspector sends more: a
+  // full-length trace for replay is about 100 kB.
+  const io = new Server(httpServer, {
+    maxHttpBufferSize: options.inspector ? INSPECTOR_MESSAGE_BYTES : PLAYER_MESSAGE_BYTES,
+    serveClient: false,
+  });
 
   const deliver = (deliveries: readonly Delivery[]) => {
     for (const { connectionId, message } of deliveries) io.to(connectionId).emit(message.type, message);
