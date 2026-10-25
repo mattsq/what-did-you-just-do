@@ -1,0 +1,39 @@
+{
+  "name": "what-did-you-just-do",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Two-player experiments in distributed cause and effect",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n client,server \"npm:dev:client\" \"npm:dev:server\"",
+    "dev:client": "vite --host 0.0.0.0",
+    "dev:server": "tsx watch src/server/index.ts",
+    "build": "vite build && esbuild src/server/index.ts --bundle --packages=external --platform=node --format=esm --target=node22 --outfile=dist/server/index.js",
+    "start": "node dist/server/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "phaser": "^3.90.0",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.19.2",
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.25.12",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
