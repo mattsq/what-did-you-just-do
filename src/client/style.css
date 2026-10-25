@@ -1,0 +1,14 @@
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #253028;
+  background: #f1f4eb;
+  font-synthesis: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1000px; margin: 0 auto; padding: 16px; }
+header { padding: 0 8px 10px; }
+h1 { margin: 4px 0; font-size: 1.6rem; }
+p { margin: 7px 0; font-size: 0.9rem; }
+#game { width: 100%; overflow: hidden; border-radius: 12px; }
+#game canvas { display: block; }
