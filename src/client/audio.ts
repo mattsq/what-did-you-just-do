@@ -3,15 +3,22 @@
  * game stays legible when muted.
  */
 let context: AudioContext | null = null;
+/** Every sound passes through this node, so muting also silences sounds already playing. */
+let master: GainNode | null = null;
 let muted = false;
 let unlocked = false;
 let hum: { oscillator: OscillatorNode; gain: GainNode } | null = null;
 
-function audio(): AudioContext | null {
-  if (muted || !unlocked || typeof AudioContext === "undefined") return null;
-  context ??= new AudioContext();
+function audio(): { ctx: AudioContext; output: GainNode } | null {
+  if (!unlocked || typeof AudioContext === "undefined") return null;
+  if (!context || !master) {
+    context = new AudioContext();
+    master = context.createGain();
+    master.gain.value = muted ? 0 : 1;
+    master.connect(context.destination);
+  }
   if (context.state === "suspended") void context.resume();
-  return context;
+  return { ctx: context, output: master };
 }
 
 interface Tone {
@@ -24,8 +31,9 @@ interface Tone {
 }
 
 function tone({ frequency, endFrequency, duration, type = "sine", volume = 0.2, delay = 0 }: Tone): void {
-  const ctx = audio();
-  if (!ctx) return;
+  const sink = muted ? null : audio();
+  if (!sink) return;
+  const { ctx, output } = sink;
   const start = ctx.currentTime + delay;
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -35,7 +43,7 @@ function tone({ frequency, endFrequency, duration, type = "sine", volume = 0.2, 
   gain.gain.setValueAtTime(0.0001, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(0.02, duration / 4));
   gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain).connect(ctx.destination);
+  oscillator.connect(gain).connect(output);
   oscillator.start(start);
   oscillator.stop(start + duration + 0.05);
 }
@@ -80,9 +88,9 @@ export const cues = {
   },
 };
 
-/** Continuous low hum while the tower's halo is on. */
+/** Continuous low hum while the tower's halo is on. It keeps running while muted. */
 export function setHum(on: boolean): void {
-  if (!on || muted) {
+  if (!on) {
     if (hum) {
       const { oscillator, gain } = hum;
       gain.gain.setTargetAtTime(0.0001, oscillator.context.currentTime, 0.15);
@@ -91,14 +99,15 @@ export function setHum(on: boolean): void {
     }
     return;
   }
-  const ctx = audio();
-  if (!ctx || hum) return;
+  const sink = audio();
+  if (!sink || hum) return;
+  const { ctx, output } = sink;
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();
   oscillator.frequency.value = 110;
   gain.gain.setValueAtTime(0.0001, ctx.currentTime);
   gain.gain.setTargetAtTime(0.05, ctx.currentTime, 0.3);
-  oscillator.connect(gain).connect(ctx.destination);
+  oscillator.connect(gain).connect(output);
   oscillator.start();
   hum = { oscillator, gain };
 }
@@ -114,5 +123,5 @@ export function isMuted(): boolean {
 
 export function setMuted(value: boolean): void {
   muted = value;
-  if (muted) setHum(false);
+  if (context && master) master.gain.setTargetAtTime(muted ? 0 : 1, context.currentTime, 0.02);
 }
