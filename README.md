@@ -18,7 +18,7 @@ See [the design specification](docs/DESIGN.md) and [agent instructions](AGENTS.m
 ## Development
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
@@ -45,7 +45,7 @@ npm run test:e2e
 
 `npm run check` runs typechecking, Vitest and the production build. The first Playwright test checks that Phaser renders and Socket.IO connects; it does **not** prove any multiplayer gameplay. GitHub Actions runs the checks on each push and PR.
 
-**Bootstrap limitation:** This scaffold was authored without access to the npm registry in its editing environment. Dependency versions correspond to published packages, but the integrated project has not been installed, built, or run here. The first compute-capable agent should run `npm install`, fix any compatibility errors, commit the generated `package-lock.json` and change the CI install step to `npm ci`.
+Dependencies are pinned by the committed `package-lock.json`; use `npm ci` for a clean, reproducible install (CI does this on Node.js 24). Vite's production build warns that the client chunk exceeds 500 kB; that is Phaser itself and is expected.
 
 ## Hosting
 
