@@ -6,7 +6,7 @@ See [the design specification](docs/DESIGN.md) and [agent instructions](AGENTS.m
 
 ## Current status
 
-**Milestone 2: two-player rooms.** Two people on separate browsers share a room by link, each sees only their own clearing, and the server owns all puzzle state. Progress is tracked in [implementation issues](https://github.com/mattsq/what-did-you-just-do/issues).
+**Milestone 3 (in progress): complete encounter.** Two people on separate browsers share a room by link, each sees only their own clearing, and the server owns all puzzle state. The finale, reset and a development-only inspector with trace replay are implemented; paired playtests are still to be run and recorded in [docs/PLAYTESTS.md](docs/PLAYTESTS.md). Progress is tracked in [implementation issues](https://github.com/mattsq/what-did-you-just-do/issues).
 
 ### Playing with a partner
 
@@ -22,6 +22,18 @@ Quick two-person check: A turns the wheel and pulls the lever; B should see the 
 ### Single-browser preview
 
 Open **`/?preview`** to try both clearings in one page without a partner. The puzzle rules run in the page; the buttons above the game switch between the western clearing (A) and the eastern clearing (B), and the game state is kept when switching. In development (`npm run dev`) a panel under the game shows both players' observations, so a control's effect on the other clearing is visible without switching. The beacon flash is a momentary effect in A's clearing, so the preview cannot show it while B's clearing is open.
+
+### Development inspector
+
+Under `npm run dev`, add `?inspect` to the page address (for example **http://localhost:5173/?inspect**, or `&inspect` after a room link) to open the room inspector below the game. It connects to a separate server namespace and shows, for the current room:
+
+- the authoritative state, both players' observations side by side, the revision and whether each seat is connected;
+- a button for every control action of **either** role (the seat need not be occupied), **Reset room** and **Force finale**;
+- the room's action trace: every successful action, reset and forced finale, with milliseconds since the room started. Copy it, edit or paste a trace, and **Replay trace** resets the room and applies it at once; both players receive the resulting state and effects.
+
+Replaying ignores the timestamps and is deterministic: the same trace always gives the same state (`replayTrace` in `src/shared/trace.ts`). A trace holds roles and actions only, never names, tokens or addresses, and stops recording after 1000 entries.
+
+The inspector has no authentication. Only the development server serves it (`npm run dev` passes `--inspector`); the production build refuses that flag and its client bundle does not contain the inspector. The development server listens on all interfaces, so anyone on your network who can reach port 3000 can inspect a room whose code they know.
 
 ### Changing the causal map
 
@@ -62,7 +74,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run check` runs typechecking, Vitest and the production build. Vitest covers the puzzle rules, the per-role observations, message validation, the room lifecycle (seating, a refused third player, isolation, reconnection, seat and room expiry, duplicate requests) and a socket-level test against a real server. The Playwright tests check that Phaser renders and Socket.IO connects, drive the single-browser preview, and run a full two-player game in **two independent browser contexts**: create and join by link, remote effects in both directions, refresh to reclaim a role, a refused third browser, the finale on both sides and reset. That test also records every WebSocket frame each browser receives and checks that neither ever names the other side's controls or fixtures. GitHub Actions runs the checks on each push and PR.
+`npm run check` runs typechecking, Vitest and the production build. Vitest covers the puzzle rules, the per-role observations, message validation, the room lifecycle (seating, a refused third player, isolation, reconnection, seat and room expiry, duplicate requests) a socket-level test against a real server, deterministic trace replay and the inspector (absent unless enabled, then acting as either role). The Playwright tests check that Phaser renders and Socket.IO connects, drive the single-browser preview and the development inspector, and run a full two-player game in **two independent browser contexts**: create and join by link, remote effects in both directions, refresh to reclaim a role, a refused third browser, the finale on both sides and reset. That test also records every WebSocket frame each browser receives and checks that neither ever names the other side's controls or fixtures. GitHub Actions runs the checks on each push and PR.
 
 Dependencies are pinned by the committed `package-lock.json`; use `npm ci` for a clean, reproducible install (CI does this on Node.js 24). Vite's production build warns that the client chunk exceeds 500 kB; that is Phaser itself and is expected.
 

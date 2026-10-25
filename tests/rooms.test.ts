@@ -235,3 +235,79 @@ describe("actions", () => {
     expect(first.reconnectToken).not.toEqual(second.reconnectToken);
   });
 });
+
+describe("development inspection", () => {
+  it("records successful actions and resets with times relative to the room's start", () => {
+    const { manager, now, code } = pair();
+    now.t = 250;
+    manager.act("a", "r1", turnWheel);
+    manager.act("a", "r2", turnValve); // refused: not A's control
+    now.t = 900;
+    manager.reset("b");
+    expect(manager.inspectRoom(code)?.trace).toEqual([
+      { at: 250, kind: "act", role: "A", action: turnWheel },
+      { at: 900, kind: "reset" },
+    ]);
+  });
+
+  it("shows the complete state, both observations and both seats", () => {
+    const { manager, code } = pair();
+    manager.leave("b");
+    const room = manager.inspectRoom(code);
+    expect(room?.state).toBe(manager.inspect(code));
+    expect(room?.observations.A.role).toBe("A");
+    expect(room?.observations.B.fixtures.tower).toBeDefined();
+    expect(room?.seats).toEqual({ A: "connected", B: "disconnected" });
+    expect(manager.inspectRoom("ZZZZZZ")).toBeNull();
+  });
+
+  it("acts as either role and sends players only their own observations", () => {
+    const { manager, code } = pair();
+    const deliveries = manager.inspectAct(code, "B", turnValve) ?? [];
+    const [forA] = only(to(deliveries, "a"), "world:update");
+    expect(forA?.observation.fixtures.pool?.pattern).toBe(2);
+    expect(JSON.stringify(forA)).not.toMatch(/valve|button|tower/);
+    expect(manager.inspectAct(code, "A", turnValve)).toEqual([]);
+    expect(manager.inspectAct("ZZZZZZ", "A", turnWheel)).toBeNull();
+  });
+
+  it("forces the finale once for both players", () => {
+    const { manager, code } = pair();
+    const deliveries = manager.inspectFinale(code) ?? [];
+    for (const id of ["a", "b"]) {
+      expect(only(to(deliveries, id), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["finale"]);
+    }
+    expect(manager.inspectFinale(code)).toEqual([]);
+    expect(manager.inspectRoom(code)?.trace.map((entry) => entry.kind)).toEqual(["finale"]);
+  });
+
+  it("replays an exported trace to the same state in a fresh room", () => {
+    const first = pair();
+    const steps = [["a", turnWheel], ["a", pullLever], ["b", turnValve], ["b", turnValve], ["b", pressButton]] as const;
+    steps.forEach(([id, action], index) => first.manager.act(id, `step-${index}`, action));
+    const exported = first.manager.inspectRoom(first.code)!;
+    expect(exported.state.finaleComplete).toBe(true);
+
+    const second = pair();
+    second.manager.act("a", "noise", turnWheel);
+    const deliveries = second.manager.inspectReplay(second.code, exported.trace) ?? [];
+    const replayed = second.manager.inspectRoom(second.code)!;
+    expect(replayed.state.controls).toEqual(exported.state.controls);
+    expect(replayed.state.finaleComplete).toBe(true);
+    expect(replayed.observations).toEqual({
+      A: { ...exported.observations.A, revision: replayed.state.revision },
+      B: { ...exported.observations.B, revision: replayed.state.revision },
+    });
+    expect(replayed.trace).toEqual(exported.trace);
+    expect(only(to(deliveries, "a"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["pulse", "finale"]);
+    expect(only(to(deliveries, "b"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["finale"]);
+  });
+
+  it("stops recording at the trace limit", () => {
+    const { manager, code } = pair();
+    for (let i = 0; i < 1005; i += 1) manager.act("a", `r${i}`, turnWheel);
+    const room = manager.inspectRoom(code);
+    expect(room?.trace).toHaveLength(1000);
+    expect(room?.traceTruncated).toBe(true);
+  });
+});

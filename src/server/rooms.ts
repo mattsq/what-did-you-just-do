@@ -1,13 +1,34 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { observe, observeEffects } from "../shared/observe";
-import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, type ErrorCode, type ServerMessage } from "../shared/protocol";
-import { applyAction, createInitialState, resetState } from "../shared/rules";
+import {
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  type ErrorCode,
+  type PartnerStatus,
+  type ServerMessage,
+} from "../shared/protocol";
+import { applyAction, createInitialState, forceFinale, resetState } from "../shared/rules";
+import { MAX_TRACE_LENGTH, replayTrace, type TraceEntry } from "../shared/trace";
 import { otherRole, ROLES, type Action, type Effect, type GameState, type Observation, type Role } from "../shared/types";
 
 /** One message for one connection; the transport decides how to send it. */
 export interface Delivery {
   readonly connectionId: string;
   readonly message: ServerMessage;
+}
+
+/**
+ * Everything about one room, for the development inspector only. Never send
+ * this to a player: it holds both roles' control values.
+ */
+export interface RoomInspection {
+  readonly roomCode: string;
+  readonly state: GameState;
+  readonly observations: Readonly<Record<Role, Observation>>;
+  readonly seats: Readonly<Record<Role, PartnerStatus>>;
+  readonly trace: readonly TraceEntry[];
+  /** True once the trace reached its length limit and stopped recording. */
+  readonly traceTruncated: boolean;
 }
 
 export interface RoomLimits {
@@ -47,6 +68,9 @@ interface Room {
   state: GameState;
   readonly seats: Partial<Record<Role, Seat>>;
   lastActivity: number;
+  /** Successful actions and resets since `traceStart`, for inspection and replay. */
+  trace: TraceEntry[];
+  traceStart: number;
 }
 
 interface Binding {
@@ -88,7 +112,14 @@ export class RoomManager {
       code = this.makeRoomCode();
     }
     const left = this.leave(connectionId);
-    const room: Room = { code, state: createInitialState(), seats: {}, lastActivity: this.now() };
+    const room: Room = {
+      code,
+      state: createInitialState(),
+      seats: {},
+      lastActivity: this.now(),
+      trace: [],
+      traceStart: this.now(),
+    };
     this.rooms.set(code, room);
     return [...swept, ...left, ...this.seat(room, "A", connectionId)];
   }
@@ -145,6 +176,7 @@ export class RoomManager {
 
     const result = applyAction(room.state, role, action);
     if (!result.ok) return [error(connectionId, "rejected-action")];
+    this.record(room, { kind: "act", role, action });
     return this.commit(room, result.state, result.effects);
   }
 
@@ -152,7 +184,7 @@ export class RoomManager {
   reset(connectionId: string): Delivery[] {
     const found = this.find(connectionId);
     if (!found) return [error(connectionId, "not-in-room")];
-    return this.commit(found.room, resetState(found.room.state), [], true);
+    return this.resetRoom(found.room);
   }
 
   /** Frees expired seats and deletes idle, empty rooms. */
@@ -178,6 +210,82 @@ export class RoomManager {
   /** Test and diagnostics helper; never send this to a player. */
   inspect(roomCode: string): GameState | undefined {
     return this.rooms.get(roomCode)?.state;
+  }
+
+  // -------------------------------------------------------------------------
+  // Development inspector. These bypass seats, so only a development-gated
+  // transport may call them (see `inspector` in app.ts).
+  // -------------------------------------------------------------------------
+
+  /** The room a connection is seated in, if any. */
+  roomOf(connectionId: string): string | undefined {
+    return this.bindings.get(connectionId)?.roomCode;
+  }
+
+  inspectRoom(roomCode: string): RoomInspection | null {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    const seat = (role: Role): PartnerStatus => {
+      const s = room.seats[role];
+      return !s ? "absent" : s.connectionId ? "connected" : "disconnected";
+    };
+    return {
+      roomCode,
+      state: room.state,
+      observations: { A: observe(room.state, "A"), B: observe(room.state, "B") },
+      seats: { A: seat("A"), B: seat("B") },
+      trace: [...room.trace],
+      traceTruncated: room.trace.length >= MAX_TRACE_LENGTH,
+    };
+  }
+
+  /** Acts as `role` whether or not anyone holds that seat. */
+  inspectAct(roomCode: string, role: Role, action: Action): Delivery[] | null {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    const result = applyAction(room.state, role, action);
+    if (!result.ok) return [];
+    this.record(room, { kind: "act", role, action });
+    return this.commit(room, result.state, result.effects);
+  }
+
+  inspectReset(roomCode: string): Delivery[] | null {
+    const room = this.rooms.get(roomCode);
+    return room ? this.resetRoom(room) : null;
+  }
+
+  inspectFinale(roomCode: string): Delivery[] | null {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    const result = forceFinale(room.state);
+    if (result.effects.length === 0) return [];
+    this.record(room, { kind: "finale" });
+    return this.commit(room, result.state, result.effects);
+  }
+
+  /**
+   * Resets the room, then applies the trace at once. Players receive one
+   * update with the final state and every effect they may witness. The room's
+   * trace becomes the replayed one, so exporting it again gives the same trace.
+   */
+  inspectReplay(roomCode: string, trace: readonly TraceEntry[]): Delivery[] | null {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    const result = replayTrace(trace, resetState(room.state));
+    room.trace = trace.slice(0, MAX_TRACE_LENGTH);
+    room.traceStart = this.now() - (trace.at(-1)?.at ?? 0);
+    return this.commit(room, result.state, result.effects, true);
+  }
+
+  private resetRoom(room: Room): Delivery[] {
+    this.record(room, { kind: "reset" });
+    return this.commit(room, resetState(room.state), [], true);
+  }
+
+  /** Recording stops at the length limit rather than dropping the start, so a trace always replays from a fresh room. */
+  private record(room: Room, entry: DistributiveOmit<TraceEntry, "at">): void {
+    if (room.trace.length >= MAX_TRACE_LENGTH) return;
+    room.trace.push({ ...entry, at: this.now() - room.traceStart } as TraceEntry);
   }
 
   private seat(room: Room, role: Role, connectionId: string): Delivery[] {
@@ -239,6 +347,8 @@ export class RoomManager {
     return { room, role: binding.role, seat };
   }
 }
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 function error(connectionId: string, code: ErrorCode): Delivery {
   return { connectionId, message: { type: "room:error", code } };

@@ -4,12 +4,18 @@ import { join } from "node:path";
 import express from "express";
 import { Server } from "socket.io";
 import { parseClientMessage, type ClientMessage } from "../shared/protocol";
+import { attachInspector } from "./inspector";
 import { RoomManager, type Delivery, type RoomManagerOptions } from "./rooms";
 
 export interface GameServerOptions extends RoomManagerOptions {
   /** Directory of the built client; served when it contains index.html. */
   readonly clientDir?: string;
   readonly sweepIntervalMs?: number;
+  /**
+   * Development only: serve the unauthenticated inspector namespace, which
+   * reveals complete room state. Never enable it for a public server.
+   */
+  readonly inspector?: boolean;
 }
 
 export interface GameServer {
@@ -69,6 +75,17 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
     }
   };
 
+  const refreshInspectors = options.inspector ? attachInspector(io, rooms, deliver) : null;
+  /** Runs a room operation for a player, then refreshes inspectors of the rooms it touched. */
+  const forPlayer = (connectionId: string, operation: () => Delivery[]) => {
+    const before = rooms.roomOf(connectionId);
+    deliver(operation());
+    if (!refreshInspectors) return;
+    const after = rooms.roomOf(connectionId);
+    if (before) refreshInspectors(before);
+    if (after && after !== before) refreshInspectors(after);
+  };
+
   io.on("connection", (socket) => {
     const messages = new TokenBucket(MESSAGE_BURST, MESSAGES_PER_SECOND, now);
     const creations = new TokenBucket(CREATE_BURST, CREATES_PER_SECOND, now);
@@ -80,9 +97,9 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
       const message = parseClientMessage(event, payload);
       if (!message) return reply("invalid-message");
       if (message.type === "room:create" && !creations.take()) return reply("rate-limited");
-      deliver(handle(socket.id, message));
+      forPlayer(socket.id, () => handle(socket.id, message));
     });
-    socket.on("disconnect", () => deliver(rooms.leave(socket.id)));
+    socket.on("disconnect", () => forPlayer(socket.id, () => rooms.leave(socket.id)));
   });
 
   const sweep = setInterval(() => deliver(rooms.sweep()), options.sweepIntervalMs ?? 60_000);
