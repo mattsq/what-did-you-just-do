@@ -52,11 +52,12 @@ export function startMultiplayer(stage: Stage): void {
       : "Not in a room.";
   };
 
-  const showLobby = () => {
+  /** `keepRoomUrl` leaves `?room=` in place so a reload rejoins with the stored token. */
+  const showLobby = (keepRoomUrl = false) => {
     room = null;
     latest = null;
     stage.hide();
-    history.replaceState(null, "", location.pathname);
+    if (!keepRoomUrl) history.replaceState(null, "", location.pathname);
     if (lobby) lobby.hidden = false;
     if (roomPanel) roomPanel.hidden = true;
     if (resetButton) resetButton.hidden = true;
@@ -93,7 +94,8 @@ export function startMultiplayer(stage: Stage): void {
     onError: (code) => {
       const ending = ROOM_ENDING_TEXT[code];
       if (ending) {
-        showLobby();
+        // A replaced seat still belongs to this tab's token: reloading takes it back.
+        showLobby(code === "replaced");
         say(ending);
       } else {
         // Rejected or rate-limited actions simply have no effect.

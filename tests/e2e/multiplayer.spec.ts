@@ -102,6 +102,22 @@ test("two independent browsers share a room and see each other's effects, never 
   await expect(c.page.getByRole("button", { name: "Create a room" })).toBeVisible();
   await c.context.close();
 
+  // A second tab carrying B's token (as a duplicated tab does) takes the seat over;
+  // the first tab keeps the room link, so reloading it takes the seat back.
+  const storage = await b.page.evaluate(() => JSON.stringify(sessionStorage));
+  const copy = await b.context.newPage();
+  await copy.addInitScript((saved) => {
+    for (const [key, value] of Object.entries(JSON.parse(saved) as Record<string, string>)) sessionStorage.setItem(key, value);
+  }, storage);
+  await copy.goto(invite);
+  await expect(copy.getByText("You are in the eastern clearing (B).")).toBeVisible();
+  await expect(b.page.getByRole("status")).toContainText("opened in another tab");
+  expect(b.page.url()).toBe(invite);
+  await copy.close();
+  await b.page.reload();
+  await expect(b.page.getByText("You are in the eastern clearing (B).")).toBeVisible();
+  await expect(panelB).toContainText('"tower":{"orientation":0,"halo":true}');
+
   // B turns the valve to still A's pool, then presses the button: the finale reaches both.
   await stepUntil(b.page, "ArrowDown", names("valve"));
   await use(b.page, "valve");
