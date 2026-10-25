@@ -15,11 +15,17 @@ export interface ClientSession {
   subscribe(listener: (update: SessionUpdate) => void): () => void;
 }
 
+/** The page's link to the clearing scene: show one role's session, or none. */
+export interface Stage {
+  show(session: ClientSession): void;
+  hide(): void;
+}
+
 /**
- * Single-browser developer preview (Milestone 1): runs the shared rules in
- * the page so either clearing can be tried without a server. Scenes still
- * receive only one role's observation. Milestone 2 replaces this with a
- * server-backed session that implements the same ClientSession interface.
+ * Single-browser developer preview (`/?preview`): runs the shared rules in
+ * the page so either clearing can be tried without a partner. Scenes still
+ * receive only one role's observation. Real play uses the server-backed
+ * session in network.ts, which implements the same ClientSession interface.
  */
 export class LocalPreview {
   private state: GameState = createInitialState();

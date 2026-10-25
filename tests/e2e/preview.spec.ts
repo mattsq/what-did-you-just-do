@@ -9,14 +9,14 @@ async function walkToAndUse(page: Page, key: string, control: string): Promise<v
   await page.keyboard.press("e");
 }
 
-test("each clearing's controls change the other clearing", async ({ page }) => {
+test("preview: each clearing's controls change the other clearing", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
   });
 
-  await page.goto("/");
+  await page.goto("/?preview");
   await expect(page.locator("#game canvas")).toBeVisible();
   const panel = page.locator("#dev-panel");
   await expect(panel).toContainText('Observation B: {"role":"B","revision":0');
