@@ -17,9 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      # Bootstrap phase: first environment-backed agent should commit an
-      # npm-generated package-lock.json and replace this with npm ci.
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
