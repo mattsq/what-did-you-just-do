@@ -6,7 +6,19 @@ See [the design specification](docs/DESIGN.md) and [agent instructions](AGENTS.m
 
 ## Current status
 
-**Infrastructure scaffold, not a playable puzzle yet.** The current scene is placeholder artwork; the server supports Socket.IO connectivity but has no room membership, controls, or puzzle transitions. Progress is tracked in [implementation issues](https://github.com/mattsq/what-did-you-just-do/issues).
+**Milestone 1: single-browser local preview.** Both clearings, all four controls, the causal map and the finale run in one browser so the toy can be tried and tuned. The puzzle rules run in the page for now; two-player rooms and server-authoritative state are Milestone 2. Progress is tracked in [implementation issues](https://github.com/mattsq/what-did-you-just-do/issues).
+
+### Playing the preview
+
+- **Move:** WASD or arrow keys. **Use the nearest control:** E or Space. **Mute:** M or the "Sound on" button.
+- The buttons above the game switch between the western clearing (A: wheel, lever, pool, beacon) and the eastern clearing (B: valve, button, red tower). The game state is kept when switching. **Reset** restores the starting positions.
+- In development (`npm run dev`) a panel under the game shows both players' observations, so a control's effect on the other clearing is visible without switching.
+
+Quick manual check: as A, turn the wheel and pull the lever, then switch to B and see that the tower has turned and glows. As B, turn the valve and press the button, then switch to A: the pool pattern has changed. The button's beacon flash is a momentary effect in A's clearing, so the single-browser preview cannot show it while B's clearing is open; with two players (Milestone 2) A will see it. The finale is shown in whichever clearing is open.
+
+### Changing the causal map
+
+The causes and effects are data in [`src/shared/puzzles/first-clearing.ts`](src/shared/puzzles/first-clearing.ts): which control drives which fixture, how each detent maps to a visible pattern or orientation, and the finale condition. Change that file and the matching expectations in `tests/rules.test.ts` and `tests/observation.test.ts`; rules (`src/shared/rules.ts`) and observations (`src/shared/observe.ts`) need no edits. Positions and drawings of objects are in `src/client/layout.ts` and `src/client/views.ts`.
 
 ## Prerequisites
 
@@ -22,7 +34,7 @@ npm ci
 npm run dev
 ```
 
-Open **http://localhost:5173**. Vite serves the client and proxies Socket.IO to the Node server on port **3000**. The page should show a placeholder Phaser scene and a “Server connected” status.
+Open **http://localhost:5173**. Vite serves the client and proxies Socket.IO to the Node server on port **3000**. The page should show the western clearing and a “Server connected” status.
 
 To test the production bundle:
 
@@ -43,7 +55,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run check` runs typechecking, Vitest and the production build. The first Playwright test checks that Phaser renders and Socket.IO connects; it does **not** prove any multiplayer gameplay. GitHub Actions runs the checks on each push and PR.
+`npm run check` runs typechecking, Vitest and the production build. The Playwright tests check that Phaser renders and Socket.IO connects, and drive the local preview with the keyboard (walk to a control, use it, see the other clearing's observation change). They do **not** prove any multiplayer gameplay yet. GitHub Actions runs the checks on each push and PR.
 
 Dependencies are pinned by the committed `package-lock.json`; use `npm ci` for a clean, reproducible install (CI does this on Node.js 24). Vite's production build warns that the client chunk exceeds 500 kB; that is Phaser itself and is expected.
 

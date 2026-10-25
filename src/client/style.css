@@ -12,3 +12,14 @@ h1 { margin: 4px 0; font-size: 1.6rem; }
 p { margin: 7px 0; font-size: 0.9rem; }
 #game { width: 100%; overflow: hidden; border-radius: 12px; }
 #game canvas { display: block; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.toolbar button {
+  font: inherit; font-size: 0.85rem; padding: 5px 10px; cursor: pointer;
+  border: 1px solid #6b7a63; border-radius: 6px; background: #fff; color: #253028;
+}
+.toolbar button[aria-pressed="true"] { background: #2f4a36; color: #fff; }
+#interaction-hint { min-height: 1.4em; padding: 4px 8px; }
+#dev-panel {
+  margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+  font-size: 0.75rem; background: #e3e8db; border-radius: 6px;
+}
