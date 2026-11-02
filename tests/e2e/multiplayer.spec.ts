@@ -159,3 +159,38 @@ test("two independent browsers share a room and see each other's effects, never 
   expect([...a.errors, ...b.errors, ...c.errors]).toEqual([]);
   await Promise.all([a.context.close(), b.context.close()]);
 });
+
+test("one key press turns a control once, however the key is held or typed", async ({ browser }) => {
+  const a = await player(browser);
+  let sent = 0;
+  a.page.on("websocket", (socket) => {
+    socket.on("framesent", ({ payload }) => {
+      if (String(payload).includes("control:act")) sent += 1;
+    });
+  });
+  await a.page.goto("/");
+  await a.page.getByRole("button", { name: "Create a room" }).click();
+  await expect(a.page.getByText("You are in the western clearing (A).")).toBeVisible();
+  const panel = a.page.locator("#dev-panel");
+  await stepUntil(a.page, "ArrowDown", names("wheel"));
+
+  // Holding E: one press followed by auto-repeated keydowns.
+  await a.page.keyboard.down("e");
+  for (let i = 0; i < 6; i += 1) await a.page.keyboard.down("e");
+  await a.page.keyboard.up("e");
+  await expect(panel).toContainText('"wheel":{"kind":"detent","position":1');
+
+  // Quick presses back to back, several within one frame: one turn each.
+  for (let i = 0; i < 4; i += 1) await a.page.keyboard.press("e");
+  await expect(panel).toContainText('"wheel":{"kind":"detent","position":2');
+
+  // Typing into the invite link field is not game input.
+  await a.page.locator("#invite-link").focus();
+  await a.page.keyboard.press("e");
+  await a.page.keyboard.press(" ");
+  await settle(a.page, 300);
+  expect(sent).toBe(5);
+  await expect(panel).toContainText('"wheel":{"kind":"detent","position":2');
+  expect(a.errors).toEqual([]);
+  await a.context.close();
+});
