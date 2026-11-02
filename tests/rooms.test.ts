@@ -7,6 +7,8 @@ const turnWheel: Action = { type: "turn", controlId: "wheel", direction: 1 };
 const turnValve: Action = { type: "turn", controlId: "valve", direction: 1 };
 const pullLever: Action = { type: "toggle", controlId: "lever" };
 const pressButton: Action = { type: "press", controlId: "button" };
+/** Brings A's season to B's, which the finale needs. */
+const turnWeathervane: Action = { type: "turn", controlId: "weathervane", direction: 1 };
 
 function setup(now = { t: 0 }) {
   let rooms = 0;
@@ -127,7 +129,7 @@ describe("reconnection", () => {
 
   it("never replays effects or the finale on reconnect", () => {
     const { manager, code, tokenA } = pair();
-    const steps = [["a", turnWheel], ["a", pullLever], ["b", turnValve], ["b", turnValve]] as const;
+    const steps = [["a", turnWheel], ["a", pullLever], ["b", turnValve], ["b", turnValve], ["b", turnWeathervane]] as const;
     steps.forEach(([id, action], index) => manager.act(id, `step-${index}`, action));
     const finale = manager.act("b", "press", pressButton);
     expect(only(to(finale, "a"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["pulse", "finale"]);
@@ -175,8 +177,8 @@ describe("actions", () => {
     const [forB] = only(to(deliveries, "b"), "world:update");
     expect(forA?.observation.controls.wheel).toMatchObject({ position: 1 });
     expect(forB?.observation.fixtures.tower?.orientation).toBe(0);
-    expect(JSON.stringify(forB)).not.toMatch(/wheel|lever|pool|beacon/);
-    expect(JSON.stringify(forA)).not.toMatch(/valve|button|tower/);
+    expect(JSON.stringify(forB)).not.toMatch(/wheel|lever|pool|beacon|sundial/);
+    expect(JSON.stringify(forA)).not.toMatch(/valve|button|tower|weathervane/);
   });
 
   it("sends nothing to a player whose view did not change", () => {
@@ -266,7 +268,7 @@ describe("development inspection", () => {
     const deliveries = manager.inspectAct(code, "B", turnValve) ?? [];
     const [forA] = only(to(deliveries, "a"), "world:update");
     expect(forA?.observation.fixtures.pool?.pattern).toBe(2);
-    expect(JSON.stringify(forA)).not.toMatch(/valve|button|tower/);
+    expect(JSON.stringify(forA)).not.toMatch(/valve|button|tower|weathervane/);
     expect(manager.inspectAct(code, "A", turnValve)).toEqual([]);
     expect(manager.inspectAct("ZZZZZZ", "A", turnWheel)).toBeNull();
   });
@@ -283,7 +285,9 @@ describe("development inspection", () => {
 
   it("replays an exported trace to the same state in a fresh room", () => {
     const first = pair();
-    const steps = [["a", turnWheel], ["a", pullLever], ["b", turnValve], ["b", turnValve], ["b", pressButton]] as const;
+    const steps = [
+      ["a", turnWheel], ["a", pullLever], ["b", turnValve], ["b", turnValve], ["b", turnWeathervane], ["b", pressButton],
+    ] as const;
     steps.forEach(([id, action], index) => first.manager.act(id, `step-${index}`, action));
     const exported = first.manager.inspectRoom(first.code)!;
     expect(exported.state.finaleComplete).toBe(true);
@@ -299,8 +303,8 @@ describe("development inspection", () => {
       B: { ...exported.observations.B, revision: replayed.state.revision },
     });
     expect(replayed.trace).toEqual(exported.trace);
-    expect(only(to(deliveries, "a"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["pulse", "finale"]);
-    expect(only(to(deliveries, "b"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["finale"]);
+    expect(only(to(deliveries, "a"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["crossing", "pulse", "finale"]);
+    expect(only(to(deliveries, "b"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["crossing", "finale"]);
   });
 
   it("stops recording at the trace limit", () => {

@@ -37,8 +37,8 @@ test("preview: each clearing's controls change the other clearing", async ({ pag
 
   // Neither projection names the other role's controls.
   const [a, b] = (await panel.innerText()).split("\n");
-  expect(a).not.toMatch(/valve|button|tower/);
-  expect(b).not.toMatch(/wheel|lever|pool|beacon/);
+  expect(a).not.toMatch(/valve|button|tower|weathervane/);
+  expect(b).not.toMatch(/wheel|lever|pool|beacon|sundial/);
 
   await page.getByRole("button", { name: "Reset" }).click();
   await expect(panel).toContainText('"tower":{"orientation":2,"halo":false}');

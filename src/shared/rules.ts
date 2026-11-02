@@ -9,7 +9,10 @@ import type {
   PropertyBinding,
   PuzzleDefinition,
   Role,
+  Season,
+  SeasonRelation,
 } from "./types";
+import { COLD_SEASONS, ROLES, SEASONS } from "./types";
 
 export function createInitialState(puzzle: PuzzleDefinition = FIRST_CLEARING): GameState {
   return {
@@ -62,6 +65,16 @@ export function applyAction(
   if (action.type === "turn" && control.kind === "detent") {
     const current = Number(state.controls[action.controlId] ?? control.initial);
     controls[action.controlId] = mod(current + action.direction, control.positions);
+    const before = seasonRelation(state, puzzle);
+    const after = seasonRelation({ ...state, controls }, puzzle);
+    // One season step always breaks the previous relation, so `after !== before`
+    // means a season change has just brought the clearings into a new relation.
+    if (after === "same" && before !== after) {
+      effects.push({ eventId: nextEventId++, kind: "crossing", relation: "same" });
+    } else if (after === "complementary" && before !== after) {
+      const from = ROLES.find((r) => COLD_SEASONS.includes(seasonOf({ ...state, controls }, puzzle, r)))!;
+      effects.push({ eventId: nextEventId++, kind: "crossing", relation: "complementary", from });
+    }
   } else if (action.type === "toggle" && control.kind === "toggle") {
     controls[action.controlId] = !(state.controls[action.controlId] ?? control.initial);
   } else if (action.type === "press" && control.kind === "momentary") {
@@ -102,20 +115,42 @@ export function forceFinale(state: GameState): { readonly state: GameState; read
 }
 
 export function finaleConditionsHold(state: GameState, puzzle: PuzzleDefinition = FIRST_CLEARING): boolean {
+  const { seasons } = puzzle.finale;
+  if (seasons && seasonRelation(state, puzzle) !== seasons) return false;
   return puzzle.finale.requires.every(
     (condition) => fixtureValue(state, puzzle, condition.fixture, condition.property) === condition.equals,
   );
 }
 
-/** The visible value of one fixture property, derived from authoritative control state. */
+/** The season of one clearing, derived from authoritative control state. */
+export function seasonOf(state: GameState, puzzle: PuzzleDefinition, clearing: Role): Season {
+  const { control, map } = puzzle.seasons.clearings[clearing];
+  return evaluateBinding(state, { kind: "detent", control, map }) as Season;
+}
+
+/** How the two clearings' seasons relate, or null when they are one step apart. */
+export function seasonRelation(state: GameState, puzzle: PuzzleDefinition): SeasonRelation | null {
+  const gap = mod(seasonOf(state, puzzle, "A") - seasonOf(state, puzzle, "B"), SEASONS.length);
+  if (gap === 0) return "same";
+  if (gap === SEASONS.length / 2) return "complementary";
+  return null;
+}
+
+/**
+ * The visible value of one fixture property, derived from authoritative
+ * control state; undefined if the property is unknown or dormant this season.
+ */
 export function fixtureValue(
   state: GameState,
   puzzle: PuzzleDefinition,
   fixtureId: string,
   property: string,
 ): FixtureValue | undefined {
-  const binding = puzzle.fixtures[fixtureId]?.properties[property];
-  return binding ? evaluateBinding(state, binding) : undefined;
+  const fixture = Object.hasOwn(puzzle.fixtures, fixtureId) ? puzzle.fixtures[fixtureId] : undefined;
+  const binding = fixture && Object.hasOwn(fixture.properties, property) ? fixture.properties[property] : undefined;
+  if (!fixture || !binding) return undefined;
+  if (binding.dormantIn?.includes(seasonOf(state, puzzle, fixture.clearing))) return undefined;
+  return evaluateBinding(state, binding);
 }
 
 export function evaluateBinding(state: GameState, binding: PropertyBinding): FixtureValue {
@@ -167,6 +202,7 @@ export function validatePuzzle(puzzle: PuzzleDefinition): string[] {
   for (const [fixtureId, fixture] of Object.entries(puzzle.fixtures)) {
     for (const [property, binding] of Object.entries(fixture.properties)) {
       const where = `${fixtureId}.${property}`;
+      if (binding.dormantIn?.some((season) => !isSeason(season))) problems.push(`${where}: unknown dormant season`);
       const control = puzzle.controls[binding.control];
       if (!control) {
         problems.push(`${where}: unknown control ${binding.control}`);
@@ -180,6 +216,13 @@ export function validatePuzzle(puzzle: PuzzleDefinition): string[] {
       if (puzzle.controls[trigger]?.kind !== "momentary") problems.push(`${fixtureId}: ${trigger} is not momentary`);
     }
   }
+  for (const role of ROLES) {
+    const { control: id, map } = puzzle.seasons.clearings[role];
+    const control = puzzle.controls[id];
+    if (control?.kind !== "detent") problems.push(`seasons.${role}: ${id} is not a detent control`);
+    else if (map.length !== control.positions) problems.push(`seasons.${role}: map needs one value per position`);
+    if (map.some((season) => !isSeason(season))) problems.push(`seasons.${role}: map values must be seasons`);
+  }
   if (puzzle.controls[puzzle.finale.trigger]?.kind !== "momentary") problems.push("finale: trigger must be momentary");
   for (const condition of puzzle.finale.requires) {
     if (!puzzle.fixtures[condition.fixture]?.properties[condition.property]) {
@@ -187,6 +230,10 @@ export function validatePuzzle(puzzle: PuzzleDefinition): string[] {
     }
   }
   return problems;
+}
+
+function isSeason(value: number): value is Season {
+  return Number.isInteger(value) && value >= 0 && value < SEASONS.length;
 }
 
 function mod(value: number, modulus: number): number {

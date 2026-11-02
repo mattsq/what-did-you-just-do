@@ -59,8 +59,8 @@ describe("socket server", () => {
     b.socket.emit("control:act", { requestId: "r1", action: { type: "press", controlId: "button" } });
     await pulse;
 
-    expect(JSON.stringify(a.received)).not.toMatch(/valve|button|tower/);
-    expect(JSON.stringify(b.received)).not.toMatch(/wheel|lever|pool|beacon/);
+    expect(JSON.stringify(a.received)).not.toMatch(/valve|button|tower|weathervane/);
+    expect(JSON.stringify(b.received)).not.toMatch(/wheel|lever|pool|beacon|sundial/);
   });
 
   it("answers malformed messages with an error and keeps serving", async () => {

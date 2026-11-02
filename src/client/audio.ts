@@ -80,6 +80,28 @@ export const cues = {
     tone({ frequency: 990, duration: 0.7, volume: 0.12, delay: 0.02 });
     tone({ frequency: 55, endFrequency: 40, duration: 0.5, volume: 0.3 });
   },
+  /** Sundial: stone grinding a quarter turn. */
+  grind: () => {
+    for (let i = 0; i < 3; i += 1) tone({ frequency: 90 + i * 12, endFrequency: 70, duration: 0.12, type: "sawtooth", volume: 0.06, delay: i * 0.09 });
+  },
+  /** Weathervane: a dry squeak. */
+  squeak: () => tone({ frequency: 1100, endFrequency: 1500, duration: 0.25, type: "triangle", volume: 0.06 }),
+  /** Remote: this clearing's season turns. */
+  wind: () => {
+    tone({ frequency: 200, endFrequency: 420, duration: 1.2, type: "triangle", volume: 0.05 });
+    tone({ frequency: 310, endFrequency: 180, duration: 1.4, volume: 0.05, delay: 0.3 });
+  },
+  /** A flock passing overhead. */
+  birds: (delay = 0) => {
+    for (let i = 0; i < 6; i += 1) {
+      tone({ frequency: 2400 + (i % 3) * 300, endFrequency: 3200, duration: 0.07, volume: 0.05, delay: delay + 0.4 + i * 0.22 });
+    }
+  },
+  /** A drift leaving (falling sweep) or arriving (rising sweep). */
+  whoosh: (arriving: boolean) => {
+    tone({ frequency: arriving ? 180 : 520, endFrequency: arriving ? 520 : 180, duration: 1.6, type: "sawtooth", volume: 0.035 });
+    if (arriving) tone({ frequency: 880, duration: 0.8, volume: 0.06, delay: 1.2 });
+  },
   /** Shared finale. */
   harmonic: () => {
     [220, 277.2, 329.6, 440, 554.4].forEach((frequency, i) => {

@@ -1,11 +1,12 @@
 import { FIRST_CLEARING } from "./puzzles/first-clearing";
-import { evaluateBinding } from "./rules";
+import { fixtureValue, seasonOf } from "./rules";
 import type {
   ControlView,
   Effect,
   FixtureValue,
   GameState,
   Observation,
+  ObservedEffect,
   PuzzleDefinition,
   Role,
 } from "./types";
@@ -39,13 +40,21 @@ export function observe(
   for (const [id, fixture] of Object.entries(puzzle.fixtures)) {
     if (fixture.clearing !== role) continue;
     const properties: Record<string, FixtureValue> = {};
-    for (const [property, binding] of Object.entries(fixture.properties)) {
-      properties[property] = evaluateBinding(state, binding);
+    for (const property of Object.keys(fixture.properties)) {
+      const value = fixtureValue(state, puzzle, id, property);
+      if (value !== undefined) properties[property] = value;
     }
     fixtures[id] = properties;
   }
 
-  return { role, revision: state.revision, controls, fixtures, finaleComplete: state.finaleComplete };
+  return {
+    role,
+    revision: state.revision,
+    controls,
+    fixtures,
+    season: seasonOf(state, puzzle, role),
+    finaleComplete: state.finaleComplete,
+  };
 }
 
 /** The ephemeral effects one role may witness. */
@@ -53,8 +62,18 @@ export function observeEffects(
   effects: readonly Effect[],
   role: Role,
   puzzle: PuzzleDefinition = FIRST_CLEARING,
-): Effect[] {
-  return effects.filter(
-    (effect) => effect.kind === "finale" || puzzle.fixtures[effect.fixture]?.clearing === role,
-  );
+): ObservedEffect[] {
+  const observed: ObservedEffect[] = [];
+  for (const effect of effects) {
+    if (effect.kind === "pulse") {
+      if (puzzle.fixtures[effect.fixture]?.clearing === role) observed.push(effect);
+    } else if (effect.kind === "crossing" && effect.relation === "complementary") {
+      const { eventId, kind, relation, from } = effect;
+      observed.push({ eventId, kind, relation, direction: from === role ? "leaving" : "arriving" });
+    } else {
+      // The finale and a passing flock are witnessed in both clearings.
+      observed.push(effect);
+    }
+  }
+  return observed;
 }

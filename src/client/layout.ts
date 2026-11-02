@@ -25,6 +25,7 @@ export const CLEARINGS: Readonly<Record<Role, ClearingLayout>> = {
     controls: {
       wheel: { x: 230, y: 380, radius: 42, label: "wheel", solid: true },
       lever: { x: 390, y: 450, radius: 28, label: "lever", solid: true },
+      sundial: { x: 150, y: 170, radius: 38, label: "sundial", solid: true },
     },
     fixtures: {
       pool: { x: 530, y: 230, radius: 95, solid: true },
@@ -38,6 +39,7 @@ export const CLEARINGS: Readonly<Record<Role, ClearingLayout>> = {
     controls: {
       valve: { x: 250, y: 400, radius: 36, label: "valve", solid: true },
       button: { x: 430, y: 455, radius: 26, label: "button", solid: true },
+      weathervane: { x: 200, y: 200, radius: 30, label: "weathervane", solid: true },
     },
     fixtures: {
       tower: { x: 620, y: 260, radius: 42, solid: true },

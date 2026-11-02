@@ -24,10 +24,11 @@ test("the development inspector shows server state and acts, resets, forces the 
 
   await inspector.getByRole("button", { name: "B: valve −1" }).click();
   await inspector.getByRole("button", { name: "A: toggle lever" }).click();
+  await inspector.getByRole("button", { name: "B: weathervane +1" }).click();
   await inspector.getByRole("button", { name: "B: press button" }).click();
   await expect(state).toContainText('"finaleComplete": true');
   const trace = await inspector.locator("textarea").inputValue();
-  expect(JSON.parse(trace)).toHaveLength(4);
+  expect(JSON.parse(trace)).toHaveLength(5);
 
   await inspector.getByRole("button", { name: "Reset room" }).click();
   await expect(state).toContainText('"finaleComplete": false');
@@ -38,6 +39,6 @@ test("the development inspector shows server state and acts, resets, forces the 
   await inspector.getByRole("button", { name: "Replay trace" }).click();
   await expect(state).toContainText('"wheel": 1');
   await expect(state).toContainText('"finaleComplete": true');
-  await expect(inspector).toContainText("4 trace entries");
+  await expect(inspector).toContainText("5 trace entries");
   expect(errors).toEqual([]);
 });

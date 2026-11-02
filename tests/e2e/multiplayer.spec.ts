@@ -118,6 +118,14 @@ test("two independent browsers share a room and see each other's effects, never 
   await expect(b.page.getByText("You are in the eastern clearing (B).")).toBeVisible();
   await expect(panelB).toContainText('"tower":{"orientation":0,"halo":true}');
 
+  // B turns the weathervane: A's summer becomes autumn, B's season too, so a
+  // flock crosses both clearings. The path runs left from the spawn point.
+  await expect(panelA).toContainText('"season":1');
+  await stepUntil(b.page, "ArrowLeft", names("weathervane"));
+  await use(b.page, "weathervane");
+  await expect(panelA).toContainText('"season":2');
+  await expect(panelB).toContainText('"season":2');
+
   // B turns the valve to still A's pool, then presses the button: the finale reaches both.
   await stepUntil(b.page, "ArrowDown", names("valve"));
   await use(b.page, "valve");
@@ -135,6 +143,7 @@ test("two independent browsers share a room and see each other's effects, never 
   await expect(panelA).toContainText('"pool":{"pattern":1}');
   await expect(panelA).toContainText('"finaleComplete":false');
   await expect(panelB).toContainText('"tower":{"orientation":2,"halo":false}');
+  await expect(panelA).toContainText('"season":1');
 
   // What actually crossed the network: each player's frames name only their own side.
   const fromServerA = a.frames.join("\n");
@@ -142,8 +151,10 @@ test("two independent browsers share a room and see each other's effects, never 
   expect(fromServerA).toContain("world:update");
   expect(fromServerB).toContain("world:update");
   expect(fromServerA).toContain('"kind":"pulse"');
-  expect(fromServerA).not.toMatch(/valve|button|tower/);
-  expect(fromServerB).not.toMatch(/wheel|lever|pool|beacon/);
+  expect(fromServerA).toContain('"relation":"same"');
+  expect(fromServerB).toContain('"relation":"same"');
+  expect(fromServerA).not.toMatch(/valve|button|tower|weathervane/);
+  expect(fromServerB).not.toMatch(/wheel|lever|pool|beacon|sundial/);
 
   expect([...a.errors, ...b.errors, ...c.errors]).toEqual([]);
   await Promise.all([a.context.close(), b.context.close()]);

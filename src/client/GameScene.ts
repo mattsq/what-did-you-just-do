@@ -1,17 +1,22 @@
 import Phaser from "phaser";
-import type { Action, ControlView, Effect, Observation } from "../shared/types";
+import type { Action, ControlView, Observation, ObservedEffect } from "../shared/types";
 import { cues, setHum, unlockAudio } from "./audio";
 import { CLEARINGS, type ClearingLayout, type Placement } from "./layout";
 import type { ClientSession, SessionUpdate } from "./session";
 import {
   BeaconView,
+  blowDrift,
   ButtonView,
   type ControlRenderer,
   drawScenery,
+  flyFlock,
   LeverView,
   PoolView,
+  SeasonView,
+  SundialView,
   TowerView,
   ValveView,
+  WeathervaneView,
   WheelView,
 } from "./views";
 
@@ -25,7 +30,12 @@ const CONTROL_CUES: Readonly<Record<string, () => void>> = {
   wheel: cues.click,
   lever: cues.clunk,
   valve: cues.gurgle,
+  sundial: cues.grind,
+  weathervane: cues.squeak,
 };
+
+/** How long the flock takes to fly on from the western clearing to the eastern one. */
+const FLOCK_DELAY_EAST = 2600;
 
 export interface SceneData {
   session: ClientSession;
@@ -50,6 +60,7 @@ export class GameScene extends Phaser.Scene {
   private pool?: PoolView;
   private beacon?: BeaconView;
   private tower?: TowerView;
+  private season?: SeasonView;
   private finaleGlow?: Phaser.GameObjects.Graphics;
   private readonly seenEvents = new Set<number>();
 
@@ -63,13 +74,15 @@ export class GameScene extends Phaser.Scene {
     this.controls.clear();
     this.seenEvents.clear();
     this.focused = null;
-    this.pool = this.beacon = this.tower = undefined;
+    this.pool = this.beacon = this.tower = this.season = undefined;
   }
 
   create(): void {
     const { layout } = this;
     const placements = [...Object.values(layout.controls), ...Object.values(layout.fixtures)];
-    drawScenery(this, layout.treeEdge, placements, this.session.role === "A" ? 11 : 29);
+    const seed = this.session.role === "A" ? 11 : 29;
+    drawScenery(this, layout.treeEdge, placements, seed);
+    this.season = new SeasonView(this, seed);
     this.finaleGlow = this.add.graphics();
 
     this.observation = this.session.observation();
@@ -110,6 +123,7 @@ export class GameScene extends Phaser.Scene {
     this.updateFocus();
     this.pool?.update(time);
     this.tower?.update(time);
+    this.season?.update(time);
   }
 
   private createControls(): void {
@@ -120,6 +134,8 @@ export class GameScene extends Phaser.Scene {
       const renderer =
         id === "wheel" ? new WheelView(this, placement, positions)
         : id === "valve" ? new ValveView(this, placement, positions)
+        : id === "sundial" ? new SundialView(this, placement, positions)
+        : id === "weathervane" ? new WeathervaneView(this, placement, positions)
         : id === "lever" ? new LeverView(this, placement)
         : new ButtonView(this, placement);
       this.controls.set(id, renderer);
@@ -151,13 +167,23 @@ export class GameScene extends Phaser.Scene {
       if (animate) CONTROL_CUES[id]?.();
     }
 
-    const pattern = next.fixtures.pool?.pattern;
-    if (typeof pattern === "number" && (!animate || pattern !== previous.fixtures.pool?.pattern)) {
-      this.pool?.setPattern(pattern, animate);
-      if (animate) cues.swirl();
+    if (!animate || next.season !== previous.season) {
+      this.season?.set(next.season, animate);
+      if (animate) cues.wind();
+    }
+
+    // A property absent from the observation is dormant this season: frozen.
+    if (next.fixtures.pool) {
+      const pattern = next.fixtures.pool.pattern;
+      this.pool?.setFrozen(pattern === undefined, animate);
+      if (typeof pattern === "number" && (!animate || pattern !== previous.fixtures.pool?.pattern)) {
+        this.pool?.setPattern(pattern, animate);
+        if (animate) cues.swirl();
+      }
     }
     const tower = next.fixtures.tower;
     if (tower) {
+      this.tower?.setFrozen(tower.orientation === undefined, animate);
       if (typeof tower.orientation === "number" && (!animate || tower.orientation !== previous.fixtures.tower?.orientation)) {
         this.tower?.setOrientation(tower.orientation, animate);
         if (animate) cues.creak();
@@ -168,15 +194,24 @@ export class GameScene extends Phaser.Scene {
     this.drawFinaleGlow(next.finaleComplete);
   }
 
-  private playEffect(effect: Effect): void {
+  private playEffect(effect: ObservedEffect): void {
     // Event IDs are stable, so a repeated delivery never replays an effect.
     if (this.seenEvents.has(effect.eventId)) return;
     this.seenEvents.add(effect.eventId);
-    if (effect.kind === "pulse" && effect.fixture === "beacon") {
-      this.beacon?.pulse();
-      cues.pulse();
+    if (effect.kind === "pulse") {
+      if (effect.fixture === "beacon") {
+        this.beacon?.pulse();
+        cues.pulse();
+      }
     } else if (effect.kind === "finale") {
       this.playFinale();
+    } else if (effect.relation === "same") {
+      const delay = this.session.role === "A" ? 0 : FLOCK_DELAY_EAST;
+      flyFlock(this, effect.eventId, delay);
+      cues.birds(delay / 1000);
+    } else {
+      blowDrift(this, effect.eventId, effect.direction, this.layout.treeEdge, this.observation.season);
+      cues.whoosh(effect.direction === "arriving");
     }
   }
 

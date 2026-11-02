@@ -7,6 +7,28 @@ const BRASS = 0xd7a958;
 const STONE = 0x8d8a7f;
 const TOWER_RED = 0xc4473a;
 const LIGHT = 0xfff1a8;
+const ICE = 0xdff3f7;
+
+function fade(scene: Phaser.Scene, target: Phaser.GameObjects.Graphics, alpha: number, animate: boolean): void {
+  scene.tweens.killTweensOf(target);
+  if (animate) scene.tweens.add({ targets: target, alpha, duration: 900, ease: "Sine.easeInOut" });
+  else target.setAlpha(alpha);
+}
+
+function drawIce(scene: Phaser.Scene, p: Placement): Phaser.GameObjects.Graphics {
+  const ice = scene.add.graphics({ x: p.x, y: p.y });
+  ice.fillStyle(ICE, 0.82);
+  ice.fillCircle(0, 0, p.radius);
+  ice.lineStyle(2, 0x9fc3cc, 1);
+  for (const [a, b] of [[-0.4, 0.9], [2.2, 1.6], [3.9, 0.7], [5.1, 1.2]] as const) {
+    const [x1, y1] = [Math.cos(a) * p.radius * 0.95, Math.sin(a) * p.radius * 0.95];
+    const [x2, y2] = [Math.cos(a + b) * p.radius * 0.3, Math.sin(a + b) * p.radius * 0.3];
+    ice.lineBetween(x1, y1, x2, y2);
+    ice.lineBetween(x2, y2, x2 * -0.4, y2 * 0.6);
+  }
+  ice.setAlpha(0);
+  return ice;
+}
 
 /** Rotates by the shortest path, so wrapping detents do not spin backwards. */
 function rotateTo(scene: Phaser.Scene, target: Phaser.GameObjects.Container, degrees: number, duration: number): void {
@@ -129,16 +151,83 @@ export class ButtonView implements ControlRenderer {
   }
 }
 
+/** A low stone sundial whose gnomon turns a quarter at a time. */
+export class SundialView implements ControlRenderer {
+  private readonly gnomon: Phaser.GameObjects.Container;
+
+  constructor(private readonly scene: Phaser.Scene, p: Placement, private readonly positions: number) {
+    shadow(scene, p);
+    scene.add.circle(p.x, p.y, p.radius, 0xcfc6b0).setStrokeStyle(5, INK);
+    const marks = scene.add.graphics({ x: p.x, y: p.y });
+    marks.lineStyle(3, INK, 0.7);
+    for (let i = 0; i < 12; i += 1) {
+      const angle = (i * Math.PI) / 6;
+      const inner = i % 3 === 0 ? p.radius * 0.6 : p.radius * 0.78;
+      marks.lineBetween(Math.cos(angle) * inner, Math.sin(angle) * inner, Math.cos(angle) * p.radius * 0.92, Math.sin(angle) * p.radius * 0.92);
+    }
+    const blade = scene.add.triangle(0, 0, 0, -6, p.radius * 0.95, 0, 0, 6, 0x6b5a45).setOrigin(0, 0).setStrokeStyle(2, INK);
+    const cast = scene.add.triangle(4, 6, 0, -4, p.radius * 0.8, 0, 0, 4, 0x2c3a24, 0.3).setOrigin(0, 0);
+    const pin = scene.add.circle(0, 0, 7, BRASS).setStrokeStyle(2, INK);
+    this.gnomon = scene.add.container(p.x, p.y, [cast, blade, pin]);
+  }
+
+  show(value: number | boolean, animate: boolean): void {
+    const angle = -90 + (Number(value) * 360) / this.positions;
+    if (animate) rotateTo(this.scene, this.gnomon, angle, 600);
+    else this.gnomon.angle = angle;
+  }
+}
+
+/** A tall weathervane: an arrow on a post that swings a quarter at a time. */
+export class WeathervaneView implements ControlRenderer {
+  private readonly arrow: Phaser.GameObjects.Container;
+
+  constructor(private readonly scene: Phaser.Scene, p: Placement, private readonly positions: number) {
+    shadow(scene, p, 0.7);
+    const compass = scene.add.graphics({ x: p.x, y: p.y });
+    compass.lineStyle(4, INK, 0.8);
+    compass.lineBetween(-p.radius, 0, p.radius, 0);
+    compass.lineBetween(0, -p.radius, 0, p.radius);
+    scene.add.circle(p.x, p.y, 12, 0x5d5f63).setStrokeStyle(3, INK);
+    const shaft = scene.add.rectangle(0, 0, p.radius * 2.2, 6, 0x3b362f);
+    const head = scene.add.triangle(p.radius * 1.1, 0, 0, -11, 18, 0, 0, 11, 0x3b362f).setOrigin(0, 0.5);
+    // A flat fin, cut at the back, so the tail never reads as a second arrowhead.
+    const r = p.radius;
+    const tail = scene.add
+      .polygon(0, 0, [-r * 1.25, -15, -r * 0.55, -6, -r * 0.55, 6, -r * 1.25, 15, -r * 1.05, 0], 0xc4473a)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, INK);
+    const pivot = scene.add.circle(0, 0, 6, BRASS);
+    this.arrow = scene.add.container(p.x, p.y, [shaft, head, tail, pivot]);
+  }
+
+  show(value: number | boolean, animate: boolean): void {
+    const angle = (Number(value) * 360) / this.positions;
+    if (!animate) {
+      this.arrow.angle = angle;
+      return;
+    }
+    // Overshoots and settles, as if caught by wind.
+    const delta = ((angle - this.arrow.angle + 540) % 360) - 180;
+    this.scene.tweens.killTweensOf(this.arrow);
+    this.scene.tweens.add({ targets: this.arrow, angle: this.arrow.angle + delta, duration: 900, ease: "Elastic.easeOut" });
+  }
+}
+
 /** Water whose surface pattern is driven by the remote valve. */
 export class PoolView {
   private readonly surface: Phaser.GameObjects.Graphics;
+  private readonly ice: Phaser.GameObjects.Graphics;
   private pattern = 0;
   private changedAt = -Infinity;
+  /** While frozen, the surface stays as it was at this time. */
+  private frozenAt: number | null = null;
 
   constructor(private readonly scene: Phaser.Scene, private readonly p: Placement) {
     scene.add.circle(p.x, p.y, p.radius + 12, STONE).setStrokeStyle(4, INK);
     scene.add.circle(p.x, p.y, p.radius, 0x5f93a6);
     this.surface = scene.add.graphics({ x: p.x, y: p.y });
+    this.ice = drawIce(scene, p);
   }
 
   setPattern(pattern: number, animate: boolean): void {
@@ -146,7 +235,15 @@ export class PoolView {
     if (animate) this.changedAt = this.scene.time.now;
   }
 
-  update(time: number): void {
+  /** Ice is shown by a pale cracked sheet and a motionless surface, not only by colour. */
+  setFrozen(frozen: boolean, animate: boolean): void {
+    if (frozen === (this.frozenAt !== null)) return;
+    this.frozenAt = frozen ? this.scene.time.now : null;
+    fade(this.scene, this.ice, frozen ? 1 : 0, animate);
+  }
+
+  update(now: number): void {
+    const time = this.frozenAt ?? now;
     const { radius } = this.p;
     const g = this.surface;
     const t = time / 1000;
@@ -230,6 +327,7 @@ export class TowerView {
   private readonly arm: Phaser.GameObjects.Container;
   private readonly halo: Phaser.GameObjects.Arc;
   private readonly base: Phaser.GameObjects.Rectangle;
+  private readonly frost: Phaser.GameObjects.Graphics;
   private haloOn = false;
   /** Arm angle for each orientation; 0 points west, towards the other clearing. */
   static readonly ANGLES = [180, 300, 60];
@@ -241,7 +339,20 @@ export class TowerView {
     const beam = scene.add.rectangle(p.radius * 1.5, 0, p.radius * 3, 20, 0xa3362c).setStrokeStyle(4, 0x6d2f27);
     const tip = scene.add.circle(p.radius * 3, 0, 15, TOWER_RED).setStrokeStyle(4, 0x6d2f27);
     const hub = scene.add.circle(0, 0, 16, 0x6d2f27);
-    this.arm = scene.add.container(p.x, p.y, [beam, tip, hub]);
+    this.frost = scene.add.graphics();
+    this.frost.fillStyle(ICE, 0.85);
+    this.frost.lineStyle(3, 0xffffff, 0.9);
+    // Snow caps on the arm and icicles along it: the arm is stuck.
+    this.frost.fillCircle(p.radius * 3, 0, 12);
+    this.frost.fillCircle(0, 0, 13);
+    for (let x = p.radius * 0.6; x < p.radius * 2.9; x += 14) this.frost.fillTriangle(x - 5, 9, x + 5, 9, x, 24);
+    this.frost.strokeRect(-6, -12, p.radius * 3, 24);
+    this.frost.setAlpha(0);
+    this.arm = scene.add.container(p.x, p.y, [beam, tip, hub, this.frost]);
+  }
+
+  setFrozen(frozen: boolean, animate: boolean): void {
+    fade(this.scene, this.frost, frozen ? 1 : 0, animate);
   }
 
   setOrientation(orientation: number, animate: boolean): void {
@@ -265,6 +376,219 @@ export class TowerView {
   rise(): void {
     this.scene.tweens.add({ targets: [this.base, this.arm], scale: 1.35, duration: 700, yoyo: true, hold: 900, ease: "Sine.easeInOut" });
   }
+}
+
+interface SeasonLook {
+  /** Wash over the grass. */
+  readonly tint: number;
+  readonly tintAlpha: number;
+  /** Things lying on the ground, and things in the air: shape matters as well as colour. */
+  readonly ground: { readonly color: number; readonly shape: "flower" | "leaf" | "drift" | "none" };
+  readonly air: { readonly color: number; readonly shape: "petal" | "mote" | "leaf" | "flake"; readonly count: number; readonly fall: number };
+}
+
+/** Indexed by Season: spring, summer, autumn, winter. */
+const SEASON_LOOKS: readonly SeasonLook[] = [
+  { tint: 0xb9e39a, tintAlpha: 0.18, ground: { color: 0xf3c6d8, shape: "flower" }, air: { color: 0xf7d3e0, shape: "petal", count: 18, fall: 22 } },
+  { tint: 0xf3e27a, tintAlpha: 0.16, ground: { color: 0xfff1a8, shape: "none" }, air: { color: 0xfff6c2, shape: "mote", count: 14, fall: 4 } },
+  { tint: 0xd98a3d, tintAlpha: 0.3, ground: { color: 0xc8662f, shape: "leaf" }, air: { color: 0xd8742f, shape: "leaf", count: 22, fall: 40 } },
+  { tint: 0xeef4f6, tintAlpha: 0.55, ground: { color: 0xffffff, shape: "drift" }, air: { color: 0xffffff, shape: "flake", count: 55, fall: 55 } },
+];
+
+/** The clearing's season: a wash over the grass, things on the ground and things in the air. */
+export class SeasonView {
+  private readonly wash: Phaser.GameObjects.Rectangle;
+  private readonly ground: Phaser.GameObjects.Graphics;
+  private readonly air: Phaser.GameObjects.Graphics;
+  private season = 0;
+
+  constructor(private readonly scene: Phaser.Scene, private readonly seed: number) {
+    const { width, height } = scene.scale;
+    this.wash = scene.add.rectangle(width / 2, height / 2, width, height, 0xffffff, 0);
+    this.ground = scene.add.graphics();
+    this.air = scene.add.graphics().setDepth(20);
+  }
+
+  set(season: number, animate: boolean): void {
+    this.season = season;
+    const look = SEASON_LOOKS[season] ?? SEASON_LOOKS[0]!;
+    this.wash.setFillStyle(look.tint, look.tintAlpha);
+    this.drawGround(look);
+    if (animate) {
+      // A gust: the whole clearing brightens and settles into the new season.
+      const { width, height } = this.scene.scale;
+      const gust = this.scene.add.rectangle(width / 2, height / 2, width, height, 0xffffff, 0.45).setDepth(21);
+      this.scene.tweens.add({ targets: gust, alpha: 0, duration: 1200, ease: "Sine.easeOut", onComplete: () => gust.destroy() });
+      for (const target of [this.wash, this.ground]) {
+        target.setAlpha(0);
+        this.scene.tweens.add({ targets: target, alpha: 1, duration: 1200 });
+      }
+    }
+  }
+
+  private drawGround(look: SeasonLook): void {
+    const { width, height } = this.scene.scale;
+    const random = mulberry32(this.seed + 7);
+    const g = this.ground;
+    g.clear();
+    if (look.ground.shape === "none") return;
+    for (let i = 0; i < 90; i += 1) {
+      const [x, y] = [random() * width, random() * height];
+      const size = 3 + random() * 4;
+      g.fillStyle(look.ground.color, 0.85);
+      if (look.ground.shape === "flower") {
+        for (let k = 0; k < 4; k += 1) g.fillCircle(x + Math.cos((k * Math.PI) / 2) * size * 0.7, y + Math.sin((k * Math.PI) / 2) * size * 0.7, size * 0.55);
+        g.fillStyle(0xf2d14b, 1);
+        g.fillCircle(x, y, size * 0.35);
+      } else if (look.ground.shape === "leaf") {
+        g.fillEllipse(x, y, size * 2.4, size * 1.2);
+      } else {
+        g.fillEllipse(x, y, size * 9, size * 3.5);
+      }
+    }
+  }
+
+  update(time: number): void {
+    const look = SEASON_LOOKS[this.season] ?? SEASON_LOOKS[0]!;
+    drawAir(this.air, this.scene, look.air, time, this.seed);
+  }
+}
+
+/** Deterministic falling particles: each one's path is a function of its index and the time. */
+function drawAir(
+  g: Phaser.GameObjects.Graphics,
+  scene: Phaser.Scene,
+  air: SeasonLook["air"],
+  time: number,
+  seed: number,
+): void {
+  const { width, height } = scene.scale;
+  const t = time / 1000;
+  const random = mulberry32(seed);
+  g.clear();
+  for (let i = 0; i < air.count; i += 1) {
+    const [x0, y0, sway, speed] = [random() * width, random() * height, random() * 6, 0.6 + random() * 0.8];
+    const y = (y0 + t * air.fall * speed) % height;
+    const x = (((x0 + Math.sin(t * 0.8 + sway) * 18) % width) + width) % width;
+    drawParticle(g, air.shape, air.color, x, y, t + sway, 0.8);
+  }
+}
+
+function drawParticle(
+  g: Phaser.GameObjects.Graphics,
+  shape: SeasonLook["air"]["shape"] | "rain",
+  color: number,
+  x: number,
+  y: number,
+  phase: number,
+  alpha: number,
+): void {
+  if (shape === "rain") {
+    g.lineStyle(2, color, alpha);
+    g.lineBetween(x, y, x - 3, y + 14);
+    return;
+  }
+  g.fillStyle(color, alpha);
+  if (shape === "flake") {
+    g.fillCircle(x, y, 2.5);
+  } else if (shape === "mote") {
+    g.fillCircle(x, y, 1.5 + Math.abs(Math.sin(phase * 2)) * 1.5);
+  } else {
+    // Petals and leaves tumble: their width changes as they turn.
+    const turn = Math.abs(Math.sin(phase * 3));
+    g.fillEllipse(x, y, (shape === "leaf" ? 10 : 7) * (0.3 + turn), shape === "leaf" ? 6 : 5);
+  }
+}
+
+/**
+ * A flock flying from west to east across the clearing. Both clearings see the
+ * same flock: the eastern one after a delay, as the birds fly on from the west.
+ */
+export function flyFlock(scene: Phaser.Scene, eventId: number, delay: number): void {
+  const { width, height } = scene.scale;
+  const random = mulberry32(eventId * 97);
+  const y = height * (0.25 + random() * 0.4);
+  const birds = scene.add.graphics().setDepth(25);
+  const start = -60;
+  const shape = { progress: 0 };
+  scene.tweens.add({
+    targets: shape,
+    progress: 1,
+    delay,
+    duration: 5200,
+    ease: "Linear",
+    onUpdate: () => {
+      const lead = start + shape.progress * (width + 320);
+      birds.clear();
+      for (let i = 0; i < 11; i += 1) {
+        const rank = Math.ceil(i / 2);
+        const side = i % 2 === 0 ? 1 : -1;
+        const bx = lead - rank * 42;
+        const by = y + side * rank * 30 + Math.sin(shape.progress * 30 + i) * 4;
+        const flap = Math.sin(shape.progress * 60 + i * 0.7);
+        // Shadow on the grass, then a body and two curved wings that beat.
+        birds.fillStyle(0x2c3a24, 0.2);
+        birds.fillEllipse(bx + 10, by + 34, 26, 8);
+        birds.lineStyle(4, 0x2b2620, 0.95);
+        for (const wing of [-1, 1]) {
+          birds.beginPath();
+          birds.moveTo(bx, by);
+          birds.lineTo(bx - 8, by + wing * (8 + flap * 5));
+          birds.lineTo(bx - 18, by + wing * (14 + flap * 10));
+          birds.strokePath();
+        }
+        birds.fillStyle(0x2b2620, 1);
+        birds.fillEllipse(bx - 2, by, 16, 6);
+      }
+    },
+    onComplete: () => birds.destroy(),
+  });
+}
+
+/**
+ * A drift between clearings. Leaving: what lies in this clearing's air blows
+ * away through the tree line. Arriving: something different blows in from it.
+ */
+export function blowDrift(
+  scene: Phaser.Scene,
+  eventId: number,
+  direction: "leaving" | "arriving",
+  treeEdge: "east" | "west",
+  season: number,
+): void {
+  const { width, height } = scene.scale;
+  const random = mulberry32(eventId * 131);
+  const shape: SeasonLook["air"]["shape"] | "rain" =
+    direction === "leaving" ? (season === 3 ? "flake" : "leaf") : season === 1 ? "rain" : "petal";
+  const color = shape === "flake" ? 0xffffff : shape === "leaf" ? 0xd8742f : shape === "rain" ? 0xbfe3ef : 0xf7c9da;
+  const edgeX = treeEdge === "east" ? width + 30 : -30;
+  const particles = Array.from({ length: 70 }, () => ({
+    x: random() * width,
+    y: random() * height,
+    delay: random() * 0.35,
+    phase: random() * 6,
+  }));
+  const g = scene.add.graphics().setDepth(24);
+  const state = { progress: 0 };
+  scene.tweens.add({
+    targets: state,
+    progress: 1,
+    duration: 3600,
+    onUpdate: () => {
+      g.clear();
+      for (const p of particles) {
+        const local = Phaser.Math.Clamp((state.progress - p.delay) / (1 - p.delay), 0, 1);
+        const eased = Phaser.Math.Easing.Sine.InOut(local);
+        // Leaving: from a spot in the clearing out to the tree line. Arriving: the reverse.
+        const along = direction === "leaving" ? eased : 1 - eased;
+        const x = Phaser.Math.Linear(p.x, edgeX, along);
+        const y = p.y + Math.sin(local * 6 + p.phase) * 20 + (shape === "rain" ? local * 40 : 0);
+        const alpha = direction === "leaving" ? 0.9 * (1 - local * 0.3) : 0.9 * Math.min(1, local * 3) * (1 - Math.max(0, local - 0.8) * 5);
+        drawParticle(g, shape, color, x, y, p.phase + local * 4, Math.max(0, alpha));
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
 }
 
 /** Grass, rocks and a tree line facing the unseen other clearing. Deterministic. */

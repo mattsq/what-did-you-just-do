@@ -43,9 +43,33 @@ export type ControlDef = DetentControlDef | ToggleControlDef | MomentaryControlD
  * observed value, so the relation between control position and visible effect
  * is not simply the identity.
  */
-export type PropertyBinding =
+export type PropertyBinding = (
   | { readonly kind: "detent"; readonly control: string; readonly map: readonly number[] }
-  | { readonly kind: "toggle"; readonly control: string; readonly invert?: boolean };
+  | { readonly kind: "toggle"; readonly control: string; readonly invert?: boolean }
+) & {
+  /**
+   * Seasons of the fixture's own clearing in which this property is dormant:
+   * it is left out of the observation and cannot satisfy a finale condition.
+   */
+  readonly dormantIn?: readonly Season[];
+};
+
+// ---------------------------------------------------------------------------
+// Seasons. Each clearing has a season, derived from a detent control like any
+// other fixture property. Seasons two steps apart are complementary.
+// ---------------------------------------------------------------------------
+
+export const SEASONS = ["spring", "summer", "autumn", "winter"] as const;
+export type Season = 0 | 1 | 2 | 3;
+/** The colder half of the year; a drift travels from a cold clearing to a warm one. */
+export const COLD_SEASONS: readonly Season[] = [2, 3];
+
+export type SeasonRelation = "same" | "complementary";
+
+export interface SeasonsDef {
+  /** How each clearing's season is derived; `map` values are Season indexes. */
+  readonly clearings: Readonly<Record<Role, { readonly control: string; readonly map: readonly number[] }>>;
+}
 
 export interface FixtureDef {
   /** The clearing (and therefore the role) that can see this fixture. */
@@ -64,12 +88,15 @@ export interface FixtureCondition {
 export interface FinaleDef {
   /** Every condition must hold when the trigger is pressed. */
   readonly requires: readonly FixtureCondition[];
+  /** How the two clearings' seasons must relate when the trigger is pressed. */
+  readonly seasons?: SeasonRelation;
   readonly trigger: string;
 }
 
 export interface PuzzleDefinition {
   readonly controls: Readonly<Record<string, ControlDef>>;
   readonly fixtures: Readonly<Record<string, FixtureDef>>;
+  readonly seasons: SeasonsDef;
   readonly finale: FinaleDef;
 }
 
@@ -100,10 +127,36 @@ export type ActionError =
   | "not-your-control"
   | "wrong-action-for-control";
 
-/** Ephemeral, non-state effects. `eventId` is stable so replays can be deduplicated. */
+type PulseEffect = { readonly eventId: number; readonly kind: "pulse"; readonly fixture: string };
+type FinaleEffect = { readonly eventId: number; readonly kind: "finale" };
+
+/**
+ * Ephemeral, non-state effects. `eventId` is stable so replays can be
+ * deduplicated. A crossing happens when a season change brings the two
+ * clearings into a relation: a flock passes over both when the seasons become
+ * the same; a drift travels from the cold clearing to the warm one when they
+ * become complementary.
+ */
 export type Effect =
-  | { readonly eventId: number; readonly kind: "pulse"; readonly fixture: string }
-  | { readonly eventId: number; readonly kind: "finale" };
+  | PulseEffect
+  | FinaleEffect
+  | { readonly eventId: number; readonly kind: "crossing"; readonly relation: "same" }
+  | { readonly eventId: number; readonly kind: "crossing"; readonly relation: "complementary"; readonly from: Role };
+
+/**
+ * An effect as one role witnesses it. A drift says only whether it leaves or
+ * arrives in this clearing, never the other clearing's season.
+ */
+export type ObservedEffect =
+  | PulseEffect
+  | FinaleEffect
+  | { readonly eventId: number; readonly kind: "crossing"; readonly relation: "same" }
+  | {
+      readonly eventId: number;
+      readonly kind: "crossing";
+      readonly relation: "complementary";
+      readonly direction: "leaving" | "arriving";
+    };
 
 export type ActionResult =
   | { readonly ok: true; readonly state: GameState; readonly effects: readonly Effect[] }
@@ -126,7 +179,10 @@ export interface Observation {
   readonly role: Role;
   readonly revision: number;
   readonly controls: Readonly<Record<string, ControlView>>;
+  /** Dormant properties are absent. */
   readonly fixtures: Readonly<Record<string, Readonly<Record<string, FixtureValue>>>>;
+  /** This clearing's own season; never the other clearing's. */
+  readonly season: Season;
   /** Public only once true; before the finale it is always false. */
   readonly finaleComplete: boolean;
 }
