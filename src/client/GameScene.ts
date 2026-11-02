@@ -101,16 +101,24 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.7);
 
     const keyboard = this.input.keyboard!;
-    this.keys = keyboard.addKeys({
-      up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", w: "W", a: "A", s: "S", d: "D",
-    }) as typeof this.keys;
-    keyboard.addCapture("SPACE");
+    // No Phaser key capture: it is game-wide and outlives this scene, so it
+    // would keep swallowing Space and the arrow keys in the lobby, and stop
+    // Space from pressing a focused page button. `onKeyDown` prevents
+    // scrolling itself, only for keys meant for the game.
+    this.keys = keyboard.addKeys(
+      { up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", w: "W", a: "A", s: "S", d: "D" },
+      false,
+    ) as typeof this.keys;
     keyboard.on("keydown", unlockAudio);
     // Interaction listens to the DOM directly: Phaser's queued key events can be
     // emitted more than once per frame and repeat while a key is held, which
     // would turn a control several times for one press.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || isEditable(event.target)) return;
+      if (isEditable(event.target)) return;
+      // Space on a focused page button presses that button, not a game control.
+      if (event.key === " " && isPressable(event.target)) return;
+      if (SCROLL_KEYS.has(event.key)) event.preventDefault();
+      if (event.repeat) return;
       if (event.key === "e" || event.key === "E" || event.key === " ") this.interact();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -317,6 +325,14 @@ export class GameScene extends Phaser.Scene {
     }
     this.session.act(action);
   }
+}
+
+/** Keys the page would otherwise use to scroll. */
+const SCROLL_KEYS = new Set([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+
+/** Page controls that Space activates, such as Reset or Sound on. */
+function isPressable(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("button, a[href], summary, [role='button']") !== null;
 }
 
 /** Keys typed into a form field, such as the invite link, are not game input. */

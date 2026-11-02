@@ -30,11 +30,32 @@ function drawIce(scene: Phaser.Scene, p: Placement): Phaser.GameObjects.Graphics
   return ice;
 }
 
-/** Rotates by the shortest path, so wrapping detents do not spin backwards. */
+const rotations = new WeakMap<Phaser.GameObjects.Container, Phaser.Tweens.Tween>();
+
+/**
+ * Rotates by the shortest path, so wrapping detents do not spin backwards.
+ * Stops only the previous rotation: other tweens on the target, such as the
+ * finale's rise, must run to their end or the target stays enlarged.
+ */
 function rotateTo(scene: Phaser.Scene, target: Phaser.GameObjects.Container, degrees: number, duration: number): void {
+  rotations.get(target)?.stop();
   const delta = ((degrees - target.angle + 540) % 360) - 180;
-  scene.tweens.killTweensOf(target);
-  scene.tweens.add({ targets: target, angle: target.angle + delta, duration, ease: "Back.easeOut" });
+  rotations.set(target, scene.tweens.add({ targets: target, angle: target.angle + delta, duration, ease: "Back.easeOut" }));
+}
+
+const risings = new WeakMap<Phaser.GameObjects.GameObject, Phaser.Tweens.Tween>();
+
+/**
+ * The finale's swell: up and back to normal size. A second finale soon after
+ * a reset restarts from normal size, rather than settling back to a size
+ * caught in the middle of the first.
+ */
+function rise(scene: Phaser.Scene, targets: readonly (Phaser.GameObjects.Components.Transform & Phaser.GameObjects.GameObject)[]): void {
+  const [first] = targets;
+  if (!first) return;
+  risings.get(first)?.stop();
+  for (const target of targets) target.setScale(1);
+  risings.set(first, scene.tweens.add({ targets: [...targets], scale: 1.35, duration: 700, yoyo: true, hold: 900, ease: "Sine.easeInOut" }));
 }
 
 function shadow(scene: Phaser.Scene, p: Placement, scale = 1): void {
@@ -289,6 +310,7 @@ export class PoolView {
 export class BeaconView {
   private readonly body: Phaser.GameObjects.Polygon;
   private readonly glow: Phaser.GameObjects.Arc;
+  private dimming?: Phaser.Time.TimerEvent;
 
   constructor(private readonly scene: Phaser.Scene, private readonly p: Placement) {
     shadow(scene, p, 1.2);
@@ -303,11 +325,14 @@ export class BeaconView {
 
   pulse(): void {
     const { scene } = this;
-    scene.tweens.killTweensOf([this.glow, this.body]);
+    // Only the glow is restarted: the body may be in the middle of the finale's rise.
+    scene.tweens.killTweensOf(this.glow);
     this.glow.setScale(0.8).setAlpha(0.95).setFillStyle(LIGHT, 1);
     scene.tweens.add({ targets: this.glow, scale: 4.5, alpha: 0, duration: 900, ease: "Cubic.easeOut" });
     this.body.setFillStyle(LIGHT);
-    scene.time.delayedCall(700, () => this.body.setFillStyle(0x56606a));
+    // A quick second press keeps the beacon lit for its full flash.
+    this.dimming?.remove();
+    this.dimming = scene.time.delayedCall(700, () => this.body.setFillStyle(0x56606a));
     const rays = scene.add.graphics({ x: this.p.x, y: this.p.y });
     rays.lineStyle(6, LIGHT, 1);
     for (let i = 0; i < 8; i += 1) {
@@ -318,7 +343,7 @@ export class BeaconView {
   }
 
   rise(): void {
-    this.scene.tweens.add({ targets: this.body, scale: 1.35, duration: 700, yoyo: true, hold: 900, ease: "Sine.easeInOut" });
+    rise(this.scene, [this.body]);
   }
 }
 
@@ -374,7 +399,7 @@ export class TowerView {
   }
 
   rise(): void {
-    this.scene.tweens.add({ targets: [this.base, this.arm], scale: 1.35, duration: 700, yoyo: true, hold: 900, ease: "Sine.easeInOut" });
+    rise(this.scene, [this.base, this.arm]);
   }
 }
 

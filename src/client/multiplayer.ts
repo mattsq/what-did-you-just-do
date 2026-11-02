@@ -13,14 +13,16 @@ const CLEARING_NAMES: Readonly<Record<Role, string>> = {
 const PARTNER_TEXT: Readonly<Record<PartnerStatus, string>> = {
   absent: "Waiting for your partner to open the invite link.",
   connected: "Your partner is here. Tell each other what you see.",
-  disconnected: "Your partner has disconnected. They can rejoin with the same link.",
+  disconnected:
+    "Your partner has disconnected. Reloading their page brings them back. If they closed it, their place opens to the invite link 10 minutes after they left.",
 };
 
 /** Errors that end the current room; the lobby is shown again. */
 const ROOM_ENDING_TEXT: Partial<Readonly<Record<ErrorCode, string>>> = {
   "room-not-found":
     "That room no longer exists. Rooms close when left idle or when the server restarts. Create a new room to play.",
-  "room-full": "That room already has two players. Ask your partner for their link, or create a new room.",
+  "room-full":
+    "That room already has two players. If one of them was you and you closed the page, your place opens again 10 minutes after you left. Otherwise, create a new room.",
   replaced: "This clearing was opened in another tab or window. Reload this page to take it back.",
   "server-busy": "The server is busy. Try again in a moment.",
 };
@@ -34,6 +36,7 @@ export function startMultiplayer(stage: Stage): void {
   const roleLabel = element("role-label");
   const inviteLink = element<HTMLInputElement>("invite-link");
   const resetButton = element<HTMLButtonElement>("reset");
+  const createButton = element<HTMLButtonElement>("create-room");
   const devPanel = import.meta.env.DEV ? element("dev-panel") : null;
   // Development only, and only on request: complete room state from the
   // server's inspector. The production bundle leaves this module out.
@@ -67,6 +70,7 @@ export function startMultiplayer(stage: Stage): void {
     if (lobby) lobby.hidden = false;
     if (roomPanel) roomPanel.hidden = true;
     if (resetButton) resetButton.hidden = true;
+    if (createButton) createButton.disabled = false;
     renderDevPanel();
   };
 
@@ -105,15 +109,21 @@ export function startMultiplayer(stage: Stage): void {
         showLobby(code === "replaced");
         say(ending);
       } else {
+        // A refused room creation can be tried again.
+        if (createButton && !room) createButton.disabled = false;
         // Rejected or rate-limited actions simply have no effect.
         console.warn("Server declined a request", code);
       }
     },
   });
 
-  element("create-room")?.addEventListener("click", (event) => {
+  createButton?.addEventListener("click", () => {
     unlockAudio();
-    (event.currentTarget as HTMLButtonElement).blur();
+    createButton.blur();
+    // One room per click: a double click would otherwise create two rooms and
+    // leave the first one waiting, empty, for a partner who never arrives.
+    if (createButton.disabled) return;
+    createButton.disabled = true;
     say("Creating a room…");
     connection.create();
   });
