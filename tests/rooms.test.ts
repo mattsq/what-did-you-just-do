@@ -213,6 +213,22 @@ describe("actions", () => {
     expect(revisions).toEqual([1, 2, 3, 4]);
   });
 
+  it("does not let revision gaps count actions the other player could not see", () => {
+    const { manager, code, tokenB } = pair();
+    const turnSundial: Action = { type: "turn", controlId: "sundial", direction: 1 };
+    // The sundial puts B in winter, where the tower stops following the wheel.
+    const winter = only(to(manager.act("a", "s1", turnSundial), "b"), "world:update")[0]!.observation;
+    expect(winter.season).toBe(3);
+    for (let i = 0; i < 5; i += 1) expect(to(manager.act("a", `w${i}`, turnWheel), "b")).toEqual([]);
+    const halo = only(to(manager.act("a", "l1", pullLever), "b"), "world:update")[0]!.observation;
+    expect(halo.revision).toBe(winter.revision + 1);
+    // Hidden turns while B is away do not show up in B's reconnect snapshot either.
+    manager.leave("b");
+    manager.act("a", "w9", turnWheel);
+    const [snapshot] = only(to(manager.join("b2", code, tokenB), "b2"), "world:update");
+    expect(snapshot?.observation.revision).toBe(halo.revision);
+  });
+
   it("lets either player reset the room for both", () => {
     const { manager, code } = pair();
     manager.act("a", "r1", turnWheel);
@@ -298,10 +314,10 @@ describe("development inspection", () => {
     const replayed = second.manager.inspectRoom(second.code)!;
     expect(replayed.state.controls).toEqual(exported.state.controls);
     expect(replayed.state.finaleComplete).toBe(true);
-    expect(replayed.observations).toEqual({
-      A: { ...exported.observations.A, revision: replayed.state.revision },
-      B: { ...exported.observations.B, revision: replayed.state.revision },
-    });
+    // Revisions count what each role was shown in its own room, so compare the views without them.
+    const withoutRevision = ({ revision: _, ...rest }: { revision: number }) => rest;
+    expect(withoutRevision(replayed.observations.A)).toEqual(withoutRevision(exported.observations.A));
+    expect(withoutRevision(replayed.observations.B)).toEqual(withoutRevision(exported.observations.B));
     expect(replayed.trace).toEqual(exported.trace);
     expect(only(to(deliveries, "a"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["crossing", "pulse", "finale"]);
     expect(only(to(deliveries, "b"), "world:update")[0]?.effects.map((e) => e.kind)).toEqual(["crossing", "finale"]);

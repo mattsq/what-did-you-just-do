@@ -76,7 +76,8 @@ export type ServerMessage =
   | { readonly type: "room:status"; readonly partner: PartnerStatus }
   /**
    * The latest projection for this role, plus any ephemeral effects this role
-   * may witness. `observation.revision` increases monotonically per room.
+   * may witness. `observation.revision` increases monotonically per role and
+   * advances only when this role's view changes or it witnesses an effect.
    */
   | { readonly type: "world:update"; readonly observation: Observation; readonly effects: readonly ObservedEffect[] }
   | { readonly type: "room:error"; readonly code: ErrorCode };

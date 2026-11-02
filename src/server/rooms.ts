@@ -71,6 +71,12 @@ interface Room {
   /** Successful actions and resets since `traceStart`, for inspection and replay. */
   trace: TraceEntry[];
   traceStart: number;
+  /**
+   * Per-role revision of what that role has been shown. It advances only when
+   * the role's own view changes or it witnesses an effect, so the gaps between
+   * a player's revisions never count actions they could not see.
+   */
+  readonly viewRevisions: Record<Role, number>;
 }
 
 interface Binding {
@@ -119,6 +125,7 @@ export class RoomManager {
       lastActivity: this.now(),
       trace: [],
       traceStart: this.now(),
+      viewRevisions: { A: 0, B: 0 },
     };
     this.rooms.set(code, room);
     return [...swept, ...left, ...this.seat(room, "A", connectionId)];
@@ -232,7 +239,7 @@ export class RoomManager {
     return {
       roomCode,
       state: room.state,
-      observations: { A: observe(room.state, "A"), B: observe(room.state, "B") },
+      observations: { A: view(room, "A"), B: view(room, "B") },
       seats: { A: seat("A"), B: seat("B") },
       trace: [...room.trace],
       traceTruncated: room.trace.length >= MAX_TRACE_LENGTH,
@@ -308,7 +315,7 @@ export class RoomManager {
     return [
       { connectionId, message: { type: "room:ready", roomCode: room.code, role, reconnectToken: seat.token } },
       // A snapshot carries no effects, so reconnecting never replays a pulse or the finale.
-      { connectionId, message: { type: "world:update", observation: observe(room.state, role), effects: [] } },
+      { connectionId, message: { type: "world:update", observation: view(room, role), effects: [] } },
       ...this.statusFor(room, role),
     ];
   }
@@ -319,14 +326,16 @@ export class RoomManager {
     room.lastActivity = this.now();
     const deliveries: Delivery[] = [];
     for (const role of ROLES) {
+      const visible = observeEffects(effects, role);
+      // Only tell a player something happened when their own view changed, and
+      // only then advance their revision, so revision numbers do not reveal
+      // unseen activity in the other clearing. A disconnected role's revision
+      // advances too, so its reconnect snapshot is never older than its last view.
+      if (!always && visible.length === 0 && sameView(observe(next, role), observe(previous, role))) continue;
+      room.viewRevisions[role] += 1;
       const connectionId = room.seats[role]?.connectionId;
       if (!connectionId) continue;
-      const observation = observe(next, role);
-      const visible = observeEffects(effects, role);
-      // Only tell a player something happened when their own view changed, so
-      // revision numbers do not reveal unseen activity in the other clearing.
-      if (!always && visible.length === 0 && sameView(observation, observe(previous, role))) continue;
-      deliveries.push({ connectionId, message: { type: "world:update", observation, effects: visible } });
+      deliveries.push({ connectionId, message: { type: "world:update", observation: view(room, role), effects: visible } });
     }
     return deliveries;
   }
@@ -352,6 +361,11 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 
 function error(connectionId: string, code: ErrorCode): Delivery {
   return { connectionId, message: { type: "room:error", code } };
+}
+
+/** What one role is shown: its projection, numbered by its own view revision. */
+function view(room: Room, role: Role): Observation {
+  return { ...observe(room.state, role), revision: room.viewRevisions[role] };
 }
 
 function sameView(a: Observation, b: Observation): boolean {

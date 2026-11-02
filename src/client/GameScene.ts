@@ -105,13 +105,20 @@ export class GameScene extends Phaser.Scene {
       up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", w: "W", a: "A", s: "S", d: "D",
     }) as typeof this.keys;
     keyboard.addCapture("SPACE");
-    keyboard.on("keydown-E", () => this.interact());
-    keyboard.on("keydown-SPACE", () => this.interact());
     keyboard.on("keydown", unlockAudio);
+    // Interaction listens to the DOM directly: Phaser's queued key events can be
+    // emitted more than once per frame and repeat while a key is held, which
+    // would turn a control several times for one press.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || isEditable(event.target)) return;
+      if (event.key === "e" || event.key === "E" || event.key === " ") this.interact();
+    };
+    window.addEventListener("keydown", onKeyDown);
 
     this.applyObservation(this.observation, false);
     const unsubscribe = this.session.subscribe((update) => this.onUpdate(update));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener("keydown", onKeyDown);
       unsubscribe();
       setHum(false);
       this.game.events.emit(FOCUS_EVENT, null);
@@ -310,6 +317,16 @@ export class GameScene extends Phaser.Scene {
     }
     this.session.act(action);
   }
+}
+
+/** Keys typed into a form field, such as the invite link, are not game input. */
+function isEditable(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
 }
 
 function controlValue(view: ControlView | undefined): number | boolean | null {
