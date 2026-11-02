@@ -64,6 +64,23 @@ The pool and tower provide remote-readable *continuous state* rather than only t
 
 **Proposed finale for v1:** The wheel is in the tower's aligned position, the valve is in the pool's aligned position, and the lever is armed; then B presses the button. The server triggers a conspicuous finale across both clearings (for example, both structures briefly rise, light propagates across the ground and a strange harmonic sound plays). Exact detents, visual cues and sequence are provisional and should be changed if playtesting finds the answer too obvious or too arbitrary.
 
+### Seasons and crossings (added 2 November 2026)
+
+Each clearing has its own season (spring, summer, autumn, winter), and **the partner sets it**: A's **sundial** turns B's season one step, and B's **weathervane** turns A's. A starts in summer and B in autumn. A player sees their own season (a wash over the grass, things on the ground and things in the air) but never receives the other clearing's season; they must ask.
+
+| Situation | What happens | Who sees what |
+| --- | --- | --- |
+| A season change makes the seasons **the same** | A flock flies west to east | A sees it first; B sees the same flock about 2.5 s later, as it flies on |
+| A season change makes the seasons **complementary** (two apart) | A drift travels from the cold clearing (autumn or winter) to the warm one | The cold clearing sees its leaves or snow blow out through its tree line; the warm clearing sees blossom (spring) or warm rain (summer) blow in through its own |
+| A clearing is in **winter** | Its remote readout freezes: A's pool ices over and stops showing the valve; B's tower arm is iced and stops following the wheel | The controls still move; the change shows after the thaw |
+| B presses the button | The finale now also needs **both clearings in the same season**. Winter's freeze rules out a shared winter | Both |
+
+**Expected conversational effect.** Each season change is noticed first by the other player ("it just started snowing here: was that you?"). Crossings give the pair their first things that pass *between* the clearings: "something just blew out of my clearing towards you", "birds just flew off my screen; do you see them?". The freeze gives a confusing null result ("I turned it and nothing happened") that is only explained by asking about the weather. The finale condition asks the pair to agree on a season, which they can only do by describing their own and asking about the other's.
+
+**Quick playtest scenario.** From the start, A turns the sundial once: snow falls in B's clearing, B's tower freezes, a snow drift leaves B and warm rain arrives in A. B turns the weathervane once: A becomes autumn. A turns the sundial three more times: B passes through spring and summer to autumn, and the flock crosses A then B. With the wheel, lever and valve aligned, B's button now starts the finale.
+
+**Deviation.** This raises the control count from four to six and adds two effects that both players witness. It keeps the rules deterministic and data-driven: the seasons are ordinary detent controls bound in `seasons` in the puzzle data, dormancy is a `dormantIn` list on a property binding, and the finale's season condition is `finale.seasons`. A drift is projected per role as `leaving` or `arriving`, so neither player is sent the other clearing's season. The complementary relation currently reveals (drifts) but gates no action; if playtesting shows it is ignored, a candidate is to make a drift deposit something the finale needs.
+
 **Crucial design constraint:** Each side has evidence about something only the other can directly manipulate. Do not make B solely the solver who dictates commands to A. The finale must be discoverable through repeated tests and spoken exchange, not a printed recipe. If a solo player with two browser tabs can trivially brute-force the puzzle without observing either viewport, revisit the causal map.
 
 ### Player journey
@@ -89,7 +106,7 @@ The pool and tower provide remote-readable *continuous state* rather than only t
 ### In scope for v1
 
 - One pair of playable clearing scenes with simple movement.
-- Exactly four interactive controls and deterministic effects.
+- Exactly four interactive controls and deterministic effects (since extended to six by the season controls; see "Seasons and crossings").
 - Two-person room creation, copyable invite URL, joining, role assignment and refresh/rejoin.
 - Server-authoritative puzzle transitions and player-specific observations.
 - Local animation/sound feedback and a shared finale.

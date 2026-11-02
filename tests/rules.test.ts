@@ -26,9 +26,15 @@ const turnWheel: [Role, Action] = ["A", { type: "turn", controlId: "wheel", dire
 const toggleLever: [Role, Action] = ["A", { type: "toggle", controlId: "lever" }];
 const turnValve: [Role, Action] = ["B", { type: "turn", controlId: "valve", direction: 1 }];
 const pressButton: [Role, Action] = ["B", { type: "press", controlId: "button" }];
+/** A's sundial sets B's season; B's weathervane sets A's season. */
+const turnSundial: [Role, Action] = ["A", { type: "turn", controlId: "sundial", direction: 1 }];
+const turnWeathervane: [Role, Action] = ["B", { type: "turn", controlId: "weathervane", direction: 1 }];
 
-/** Wheel and valve each moved to the detent that the puzzle data calls aligned. */
-const aligned: ReadonlyArray<[Role, Action]> = [turnWheel, toggleLever, turnValve, turnValve];
+/**
+ * Wheel and valve each moved to the detent that the puzzle data calls aligned,
+ * and A's season (summer) moved on to B's (autumn).
+ */
+const aligned: ReadonlyArray<[Role, Action]> = [turnWheel, toggleLever, turnValve, turnValve, turnWeathervane];
 
 describe("puzzle data", () => {
   it("is internally consistent", () => {
@@ -53,7 +59,7 @@ describe("initial state", () => {
     const state = createInitialState();
     expect(state).toEqual({
       revision: 0,
-      controls: { wheel: 0, lever: false, valve: 0 },
+      controls: { wheel: 0, lever: false, valve: 0, sundial: 0, weathervane: 0 },
       finaleComplete: false,
       nextEventId: 1,
     });
@@ -202,9 +208,10 @@ describe("finale", () => {
     const { state, effects } = run([...aligned, pressButton, pressButton]);
     expect(state.finaleComplete).toBe(true);
     expect(effects).toEqual([
-      { eventId: 1, kind: "pulse", fixture: "beacon" },
-      { eventId: 2, kind: "finale" },
-      { eventId: 3, kind: "pulse", fixture: "beacon" },
+      { eventId: 1, kind: "crossing", relation: "same" },
+      { eventId: 2, kind: "pulse", fixture: "beacon" },
+      { eventId: 3, kind: "finale" },
+      { eventId: 4, kind: "pulse", fixture: "beacon" },
     ]);
   });
 
@@ -222,9 +229,9 @@ describe("finale", () => {
       },
     };
     expect(validatePuzzle(remapped)).toEqual([]);
-    const result = run([toggleLever, turnValve, turnValve, pressButton], createInitialState(remapped), remapped);
-    expect(result.state.finaleComplete).toBe(true);
-    expect(run([toggleLever, turnValve, turnValve, pressButton]).state.finaleComplete).toBe(false);
+    const steps = [toggleLever, turnValve, turnValve, turnWeathervane, pressButton];
+    expect(run(steps, createInitialState(remapped), remapped).state.finaleComplete).toBe(true);
+    expect(run(steps).state.finaleComplete).toBe(false);
   });
 });
 
@@ -236,7 +243,7 @@ describe("reset", () => {
     expect(reset.finaleComplete).toBe(false);
     expect(reset.revision).toBe(played.revision + 1);
     const after = run([pressButton], reset);
-    expect(after.effects[0]?.eventId).toBeGreaterThan(2);
+    expect(after.effects[0]?.eventId).toBeGreaterThan(3);
   });
 
   it("allows the finale to be achieved again after reset", () => {

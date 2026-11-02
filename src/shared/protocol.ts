@@ -1,7 +1,7 @@
 // Wire protocol between one browser and the room server. Framework-free so
 // both sides share the types and the server can validate every payload.
 import { parseAction } from "./rules";
-import type { Action, Effect, Observation, Role } from "./types";
+import type { Action, Observation, ObservedEffect, Role } from "./types";
 
 /** Room code alphabet without easily confused characters (0/O, 1/I/L). */
 export const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
@@ -78,5 +78,5 @@ export type ServerMessage =
    * The latest projection for this role, plus any ephemeral effects this role
    * may witness. `observation.revision` increases monotonically per room.
    */
-  | { readonly type: "world:update"; readonly observation: Observation; readonly effects: readonly Effect[] }
+  | { readonly type: "world:update"; readonly observation: Observation; readonly effects: readonly ObservedEffect[] }
   | { readonly type: "room:error"; readonly code: ErrorCode };

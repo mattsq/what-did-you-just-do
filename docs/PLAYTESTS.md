@@ -30,6 +30,10 @@ Who first stated each relation:
   lever -> tower halo:
   valve -> pool ripples:
   button -> beacon:
+  sundial / weathervane -> the other clearing's season:
+  same seasons -> flock; opposite seasons -> drift:
+  winter freezes the pool or tower:
+  finale needs the same season:
 Did one player become a passive executor of the other's instructions?
 Laughter, surprise:
 Confusion, and what resolved it:

@@ -17,7 +17,7 @@ See [the design specification](docs/DESIGN.md) and [agent instructions](AGENTS.m
 
 Refreshing the page keeps your clearing and the current state of the puzzle. The reconnect token is kept in the tab's `sessionStorage`, so a second tab in the same browser counts as a different person; a third person opening the link is told the room is full.
 
-Quick two-person check: A turns the wheel and pulls the lever; B should see the red tower turn and glow and ask what happened. B turns the valve and presses the button; A should see the pool's ripples change and the beacon flash. With the tower aligned and glowing and the pool still, B's button press starts the finale in both clearings.
+Quick two-person check: A turns the wheel and pulls the lever; B should see the red tower turn and glow and ask what happened. B turns the valve and presses the button; A should see the pool's ripples change and the beacon flash. A's sundial changes B's season and B's weathervane changes A's; when a season change makes the seasons the same, a flock flies over A and then B, and when it makes them opposite, leaves or snow drift from the colder clearing into the warmer one. Winter freezes the pool (A) or the tower arm (B). With the tower aligned and glowing, the pool still and both clearings in the same season, B's button press starts the finale in both clearings.
 
 ### Single-browser preview
 

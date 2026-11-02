@@ -25,9 +25,9 @@ describe("player observations", () => {
     const state = createInitialState();
     const a = observe(state, "A");
     const b = observe(state, "B");
-    expect(Object.keys(a.controls).sort()).toEqual(["lever", "wheel"]);
+    expect(Object.keys(a.controls).sort()).toEqual(["lever", "sundial", "wheel"]);
     expect(Object.keys(a.fixtures).sort()).toEqual(["beacon", "pool"]);
-    expect(Object.keys(b.controls).sort()).toEqual(["button", "valve"]);
+    expect(Object.keys(b.controls).sort()).toEqual(["button", "valve", "weathervane"]);
     expect(Object.keys(b.fixtures)).toEqual(["tower"]);
   });
 
@@ -77,6 +77,7 @@ describe("player observations", () => {
       ["A", { type: "turn", controlId: "wheel", direction: 1 }],
       ["A", { type: "toggle", controlId: "lever" }],
       ["B", { type: "turn", controlId: "valve", direction: -1 }],
+      ["B", { type: "turn", controlId: "weathervane", direction: 1 }],
     ];
     for (const [role, action] of steps) {
       state = act(state, role, action).state;

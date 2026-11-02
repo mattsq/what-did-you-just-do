@@ -6,6 +6,7 @@ const solve: TraceEntry[] = [
   { at: 0, kind: "act", role: "A", action: { type: "turn", controlId: "wheel", direction: 1 } },
   { at: 400, kind: "act", role: "A", action: { type: "toggle", controlId: "lever" } },
   { at: 900, kind: "act", role: "B", action: { type: "turn", controlId: "valve", direction: -1 } },
+  { at: 1200, kind: "act", role: "B", action: { type: "turn", controlId: "weathervane", direction: 1 } },
   { at: 1500, kind: "act", role: "B", action: { type: "press", controlId: "button" } },
 ];
 
@@ -26,7 +27,7 @@ describe("trace replay", () => {
     const second = replayTrace(solve, createInitialState());
     expect(second).toEqual(first);
     expect(first.state.finaleComplete).toBe(true);
-    expect(first.effects.map((effect) => effect.kind)).toEqual(["pulse", "finale"]);
+    expect(first.effects.map((effect) => effect.kind)).toEqual(["crossing", "pulse", "finale"]);
     expect(first.rejected).toBe(0);
   });
 
@@ -34,7 +35,7 @@ describe("trace replay", () => {
     const result = replayTrace([...solve, { at: 2000, kind: "reset" }, { at: 2100, kind: "finale" }], createInitialState());
     expect(result.state.controls).toEqual(createInitialState().controls);
     expect(result.state.finaleComplete).toBe(true);
-    expect(result.effects.map((effect) => effect.kind)).toEqual(["pulse", "finale", "finale"]);
+    expect(result.effects.map((effect) => effect.kind)).toEqual(["crossing", "pulse", "finale", "finale"]);
   });
 
   it("skips and counts entries the rules refuse", () => {

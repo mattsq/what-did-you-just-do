@@ -1,10 +1,10 @@
 import { observe, observeEffects } from "../shared/observe";
 import { applyAction, createInitialState, resetState } from "../shared/rules";
-import type { Action, Effect, GameState, Observation, Role } from "../shared/types";
+import type { Action, Effect, GameState, Observation, ObservedEffect, Role } from "../shared/types";
 
 export interface SessionUpdate {
   readonly observation: Observation;
-  readonly effects: readonly Effect[];
+  readonly effects: readonly ObservedEffect[];
 }
 
 /** What a clearing scene may use: one role's observation stream and its actions. */

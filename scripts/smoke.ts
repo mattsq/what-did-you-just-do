@@ -136,9 +136,11 @@ async function main(): Promise<void> {
   await step("both players see the finale", async () => {
     a.act({ type: "toggle", controlId: "lever" });
     b.act({ type: "turn", controlId: "valve", direction: -1 });
+    // A's season moves from summer to B's autumn: the finale needs the same season.
+    b.act({ type: "turn", controlId: "weathervane", direction: 1 });
     const finaleA = a.next("world:update", (m) => m.effects.some((e) => e.kind === "finale"));
     const finaleB = b.next("world:update", (m) => m.effects.some((e) => e.kind === "finale"));
-    // The valve turn must arrive before the button press; Socket.IO keeps one client's messages in order.
+    // The valve and weathervane turns must arrive before the button press; Socket.IO keeps one client's messages in order.
     b.act({ type: "press", controlId: "button" });
     await Promise.all([finaleA, finaleB]);
   });
@@ -151,8 +153,8 @@ async function main(): Promise<void> {
   });
 
   await step("neither player received the other side's controls or fixtures", async () => {
-    check(!/valve|button|tower/.test(JSON.stringify(a.received)), "A received B's private names");
-    check(!/wheel|lever|pool|beacon/.test(JSON.stringify(b.received)), "B received A's private names");
+    check(!/valve|button|tower|weathervane/.test(JSON.stringify(a.received)), "A received B's private names");
+    check(!/wheel|lever|pool|beacon|sundial/.test(JSON.stringify(b.received)), "B received A's private names");
   });
 }
 
